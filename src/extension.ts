@@ -264,6 +264,18 @@ function findLatestCopilotLog(): string {
   return fs.existsSync(candidate) ? candidate : "";
 }
 
+// ── Poll-loop regexes (pre-compiled at module load) ──────────
+const RE_SUCCESS   = /ccreq:.*\| success \|.*\[panel\/editAgent/;
+const RE_FILTERED  = /ccreq:.*\| promptFiltered \|/;
+const RE_FAILED    = /ccreq:.*\| failed \|.*\[panel\/editAgent/;
+const RE_TIMEOUT   = /ccreq:.*\| timeout \|.*\[panel\/editAgent/;
+const RE_EMPTY     = /ccreq:.*\| empty \|.*\[panel\/editAgent/;
+const RE_UNKNOWN   = /ccreq:.*\| unknown \|.*\[panel\/editAgent/;
+const RE_LOOP_STOP = "[ToolCallingLoop] Stop hook result: shouldContinue=false";
+const RE_LOOP_ERR  = /\[ToolCallingLoop\] (?:Unhandled |Runtime )?[Ee]rror:/;
+const RE_AGENT_ERR = /\[editAgent\] (?:Unhandled |Runtime )?[Ee]rror:/;
+const RE_ERR_MSG   = /[Ee]rror[:\s]+(.+)/;
+
 // ── Pending state reset ─────────────────────────────────────
 function resetPendingState() {
   pendingCcreqLine = "";
@@ -321,7 +333,7 @@ function pollLog() {
   for (const line of lines) {
     // Cache the last ccreq success line for editAgent (one LLM turn, may be many per job)
     // Matches both [panel/editAgent] and [panel/editAgent-external] (BYOK)
-    if (/ccreq:.*\| success \|.*\[panel\/editAgent/.test(line)) {
+    if (RE_SUCCESS.test(line)) {
       if (pendingTurnCount === 0) pendingJobStartMs = Date.now();
       pendingCcreqLine = line;
       pendingTurnCount++;
@@ -333,13 +345,13 @@ function pollLog() {
     // ccreq promptFiltered → content safety / RAI filter hit upstream
     // Fires in [copilotLanguageModelWrapper] context, followed by failed in editAgent.
     // We set a flag so the subsequent editAgent failed line notifies as "filtered" instead.
-    if (/ccreq:.*\| promptFiltered \|/.test(line)) {
+    if (RE_FILTERED.test(line)) {
       pendingPromptFiltered = true;
     }
 
     // ccreq failed for editAgent → network/API/auth error (real keyword confirmed from logs)
     // If a promptFiltered was just seen upstream, report it as filtered instead.
-    if (/ccreq:.*\| failed \|.*\[panel\/editAgent/.test(line)) {
+    if (RE_FAILED.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       const wasFiltered = pendingPromptFiltered;
       resetPendingState();
@@ -351,40 +363,37 @@ function pollLog() {
     }
 
     // ccreq timeout for editAgent → backend too slow or network stalled
-    if (/ccreq:.*\| timeout \|.*\[panel\/editAgent/.test(line)) {
+    if (RE_TIMEOUT.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       resetPendingState();
       handleJobTimeout(jobInfo);
     }
 
     // ccreq empty for editAgent → model returned 0 choices
-    if (/ccreq:.*\| empty \|.*\[panel\/editAgent/.test(line)) {
+    if (RE_EMPTY.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       resetPendingState();
       handleJobEmpty(jobInfo);
     }
 
     // ccreq unknown for editAgent → unexpected/unrecognised outcome
-    if (/ccreq:.*\| unknown \|.*\[panel\/editAgent/.test(line)) {
+    if (RE_UNKNOWN.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       resetPendingState();
       handleJobError(jobInfo);
     }
 
     // ToolCallingLoop stop = entire agent job finished normally
-    if (line.includes("[ToolCallingLoop] Stop hook result: shouldContinue=false")) {
+    if (line.includes(RE_LOOP_STOP)) {
       const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
       resetPendingState();
       handleJobComplete(jobInfo);
     }
 
     // ToolCallingLoop/editAgent runtime error (e.g. unhandled exception in loop)
-    // Regex is intentionally narrow to avoid false positives on lines that merely mention "Error".
-    if (
-      /\[ToolCallingLoop\] (?:Unhandled |Runtime )?[Ee]rror:/.test(line) ||
-      /\[editAgent\] (?:Unhandled |Runtime )?[Ee]rror:/.test(line)
-    ) {
-      const errorMatch = line.match(/[Ee]rror[:\s]+(.+)/);
+    // Regexes are intentionally narrow to avoid false positives on lines that merely mention "Error".
+    if (RE_LOOP_ERR.test(line) || RE_AGENT_ERR.test(line)) {
+      const errorMatch = line.match(RE_ERR_MSG);
       const reason = errorMatch ? errorMatch[1].trim() : "Unknown error";
       const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
       resetPendingState();
