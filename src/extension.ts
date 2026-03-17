@@ -8,7 +8,7 @@ import * as http from "http";
 interface JobInfo {
   model: string;
   duration: string;
-  timestamp: string;
+  turns: number;
   errorCode?: string; // HTTP status ("429", "401") or system code ("ETIMEDOUT")
 }
 
@@ -18,6 +18,8 @@ let pollTimer: NodeJS.Timeout | undefined;
 let currentLogPath = "";
 let lastByteOffset = 0;
 let pendingCcreqLine = "";
+let pendingTurnCount = 0;
+let pendingJobStartMs = 0;
 let pendingPromptFiltered = false; // set when promptFiltered fires before the associated editAgent failed
 let isWatching = false;
 let windowExtHostLogDir = ""; // set from context.logUri — unique per VS Code window
@@ -196,6 +198,8 @@ function _startPolling() {
   currentLogPath = "";
   lastByteOffset = 0;
   pendingCcreqLine = "";
+  pendingTurnCount = 0;
+  pendingJobStartMs = 0;
   pendingPromptFiltered = false;
   setStatusWatching();
   if (!pollTimer) {
@@ -316,13 +320,17 @@ function pollLog() {
     // Cache the last ccreq success line for editAgent (one LLM turn, may be many per job)
     // Matches both [panel/editAgent] and [panel/editAgent-external] (BYOK)
     if (/ccreq:.*\| success \|.*\[panel\/editAgent/.test(line)) {
+      if (pendingTurnCount === 0) pendingJobStartMs = Date.now();
       pendingCcreqLine = line;
+      pendingTurnCount++;
     }
 
     // ccreq cancelled/canceled for editAgent → notify immediately (user stopped the job)
     if (/ccreq:.*\| cancell?ed \|.*\[panel\/editAgent/.test(line)) {
-      const jobInfo = parseJobInfo(line);
+      const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       // handleJobCancelled(jobInfo);
     }
 
@@ -336,8 +344,10 @@ function pollLog() {
     // ccreq failed for editAgent → network/API/auth error (real keyword confirmed from logs)
     // If a promptFiltered was just seen upstream, report it as filtered instead.
     if (/ccreq:.*\| failed \|.*\[panel\/editAgent/.test(line)) {
-      const jobInfo = parseJobInfo(line);
+      const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       if (pendingPromptFiltered) {
         pendingPromptFiltered = false;
         handleJobFiltered(jobInfo);
@@ -348,29 +358,37 @@ function pollLog() {
 
     // ccreq timeout for editAgent → backend too slow or network stalled
     if (/ccreq:.*\| timeout \|.*\[panel\/editAgent/.test(line)) {
-      const jobInfo = parseJobInfo(line);
+      const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       handleJobTimeout(jobInfo);
     }
 
     // ccreq empty for editAgent → model returned 0 choices
     if (/ccreq:.*\| empty \|.*\[panel\/editAgent/.test(line)) {
-      const jobInfo = parseJobInfo(line);
+      const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       handleJobEmpty(jobInfo);
     }
 
     // ccreq unknown for editAgent → unexpected/unrecognised outcome
     if (/ccreq:.*\| unknown \|.*\[panel\/editAgent/.test(line)) {
-      const jobInfo = parseJobInfo(line);
+      const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       handleJobError(jobInfo);
     }
 
     // ToolCallingLoop stop = entire agent job finished normally
     if (line.includes("[ToolCallingLoop] Stop hook result: shouldContinue=false")) {
-      const jobInfo = parseJobInfo(pendingCcreqLine);
+      const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       handleJobComplete(jobInfo);
     }
 
@@ -381,24 +399,36 @@ function pollLog() {
     ) {
       const errorMatch = line.match(/[Ee]rror[:\s]+(.+)/);
       const reason = errorMatch ? errorMatch[1].trim() : "Unknown error";
-      const jobInfo = parseJobInfo(pendingCcreqLine);
+      const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
       pendingCcreqLine = "";
+      pendingTurnCount = 0;
+      pendingJobStartMs = 0;
       handleJobError(jobInfo, reason);
     }
   }
 }
 
 // ── Parse model + duration from ccreq line ────────────────────
-function parseJobInfo(line: string): JobInfo {
-  const timestamp = new Date().toLocaleTimeString("tr-TR", { hour12: false });
+function formatDuration(ms: number): string {
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+  const m = Math.floor(ms / 60000);
+  const s = Math.round((ms % 60000) / 1000);
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
 
+function parseJobInfo(line: string, turns = 0, jobStartMs = 0): JobInfo {
   if (!line) {
-    return { model: "unknown", duration: "?", timestamp };
+    return { model: "unknown", duration: "?", turns };
   }
 
-  const durationMatch = line.match(/(\d+ms)/g);
-  const duration = durationMatch ? durationMatch[durationMatch.length - 1] : "?";
-
+  // Total job duration if we have a start time; fall back to last-call duration from log line
+  let duration: string;
+  if (jobStartMs > 0) {
+    duration = formatDuration(Date.now() - jobStartMs);
+  } else {
+    const durationMatch = line.match(/(\d+ms)/g);
+    duration = durationMatch ? durationMatch[durationMatch.length - 1] : "?";
+  }
   // Extract model from any known ccreq status keyword
   const ALL_STATUSES = "success|cancelled|canceled|failed|promptFiltered|filtered|timeout|empty|unknown";
   const modelMatch = line.match(
@@ -412,17 +442,20 @@ function parseJobInfo(line: string): JobInfo {
   const sysCodeMatch = line.match(/\b(ETIMEDOUT|ECONNRESET|ENOTFOUND|ECONNREFUSED)\b/);
   const errorCode = httpCodeMatch?.[1] ?? sysCodeMatch?.[1];
 
-  return { model, duration, timestamp, errorCode };
+  return { model, duration, turns, errorCode };
 }
 
 // ── Job outcome handlers ──────────────────────────────────────
 function handleJobComplete(job: JobInfo) {
-  const message = `Completed at ${job.timestamp} (${job.duration})\nModel: ${job.model}`;
-  sendNtfy("Copilot Job Finished", message, "default", "robot,white_check_mark");
+  const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
+  const turnsStr = job.turns > 1 ? ` · ${job.turns} turns` : "";
+  const meta = `${job.model}${turnsStr} · ${job.duration}`;
+  const msgLines = workspace ? [workspace, meta] : [meta];
+  sendNtfy("Copilot Job Finished", msgLines.join("\n"), "default", "robot,white_check_mark");
 }
 
 function handleJobCancelled(job: JobInfo) {
-  const message = `Cancelled at ${job.timestamp} (${job.duration})\nModel: ${job.model}`;
+  const message = `Model: ${job.model} (${job.duration})`;
   sendNtfy("Copilot Job Cancelled", message, "default", "robot,no_entry_sign");
 }
 
@@ -438,29 +471,29 @@ function handleJobFailure(job: JobInfo) {
   } else if (job.errorCode) {
     detail = `\nError: ${job.errorCode}`;
   }
-  const message = `Failed at ${job.timestamp} (${job.duration})\nModel: ${job.model}${detail}`;
+  const message = `Model: ${job.model} (${job.duration})${detail}`;
   sendNtfy(title, message, "high", "robot,x");
 }
 
 function handleJobFiltered(job: JobInfo) {
-  const message = `Filtered at ${job.timestamp} (${job.duration})\nModel: ${job.model}\nContent safety or copyright filter triggered.`;
+  const message = `Model: ${job.model} (${job.duration})\nContent safety or copyright filter triggered.`;
   sendNtfy("Copilot Request Filtered", message, "default", "robot,warning");
 }
 
 function handleJobTimeout(job: JobInfo) {
   const code = job.errorCode ? ` (${job.errorCode})` : "";
-  const message = `Timed out at ${job.timestamp} (${job.duration})${code}\nModel: ${job.model}`;
+  const message = `Model: ${job.model} (${job.duration})${code}`;
   sendNtfy("Copilot Job Timed Out", message, "high", "robot,hourglass_flowing_sand");
 }
 
 function handleJobEmpty(job: JobInfo) {
-  const message = `Empty response at ${job.timestamp} (${job.duration})\nModel: ${job.model}\nModel returned 0 choices.`;
+  const message = `Model: ${job.model} (${job.duration})\nModel returned 0 choices.`;
   sendNtfy("Copilot Empty Response", message, "default", "robot,question");
 }
 
 function handleJobError(job: JobInfo, reason?: string) {
   const detail = reason ? `\nReason: ${reason}` : "";
-  const message = `Failed at ${job.timestamp} (${job.duration})\nModel: ${job.model}${detail}`;
+  const message = `Model: ${job.model} (${job.duration})${detail}`;
   sendNtfy("Copilot Job Failed", message, "high", "robot,x");
 }
 
