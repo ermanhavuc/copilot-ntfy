@@ -322,15 +322,16 @@ function parseJobInfo(line: string): JobInfo {
   const duration = durationMatch ? durationMatch[durationMatch.length - 1] : "?";
 
   const modelMatch = line.match(/\| success \| ([^|]+)/);
-  const model = modelMatch ? modelMatch[1].trim() : "unknown";
+  const rawModel = modelMatch ? modelMatch[1].trim() : "unknown";
+  const model = rawModel.includes("->") ? rawModel.split("->")[0].trim() : rawModel;
 
   return { model, duration, timestamp };
 }
 
 // ── Job complete handler ──────────────────────────────────────
 function handleJobComplete(job: JobInfo) {
-  const message = `Completed at ${job.timestamp}\nModel: ${job.model} (${job.duration})`;
-  sendNtfy("✅ Copilot Job Finished", message);
+  const message = `Completed at ${job.timestamp} (${job.duration})\nModel: ${job.model}`;
+  sendNtfy("Copilot Job Finished", message);
 }
 
 // ── Send ntfy notification ────────────────────────────────────
@@ -355,7 +356,7 @@ function sendNtfy(title: string, body: string) {
       "Content-Length": bodyBuf.length,
       Title: title,
       Priority: "default",
-      Tags: "white_check_mark,robot",
+      Tags: "robot,white_check_mark",
     },
   };
 
