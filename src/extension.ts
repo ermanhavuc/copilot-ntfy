@@ -154,9 +154,12 @@ function stopWatching() {
 
 // ── Log file finder ───────────────────────────────────────────
 function findLatestCopilotLog(): string {
+  const platform = os.platform();
   const base =
-    os.platform() === "darwin"
+    platform === "darwin"
       ? path.join(os.homedir(), "Library", "Application Support", "Code", "logs")
+      : platform === "win32"
+      ? path.join(process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "Code", "logs")
       : path.join(os.homedir(), ".config", "Code", "logs");
 
   if (!fs.existsSync(base)) return "";
