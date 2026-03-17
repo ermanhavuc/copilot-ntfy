@@ -36,7 +36,10 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("copilotNtfy.startWatching", startWatching),
     vscode.commands.registerCommand("copilotNtfy.stopWatching", stopWatching),
-    vscode.commands.registerCommand("copilotNtfy.setTopic", promptForTopic)
+    vscode.commands.registerCommand("copilotNtfy.setTopic", promptForTopic),
+    vscode.commands.registerCommand("copilotNtfy.openSettings", () =>
+      vscode.commands.executeCommand("workbench.action.openSettings", "@ext:MrCarrotLabs.copilot-ntfy")
+    )
   );
 
   // Auto-start based on setting
@@ -60,14 +63,26 @@ export function deactivate() {
 // ── Status bar helpers ────────────────────────────────────────
 function setStatusWatching() {
   statusBarItem.text = "Copilot Ntfy: $(eye)";
-  statusBarItem.tooltip = "Copilot Ntfy is active — click to stop";
+  const md = new vscode.MarkdownString(
+    "**Copilot Ntfy** is active\n\n" +
+    "[Stop watching](command:copilotNtfy.stopWatching) · " +
+    "[Open settings](command:copilotNtfy.openSettings)"
+  );
+  md.isTrusted = true;
+  statusBarItem.tooltip = md;
   statusBarItem.command = "copilotNtfy.stopWatching";
   statusBarItem.backgroundColor = undefined;
 }
 
 function setStatusIdle() {
   statusBarItem.text = "Copilot Ntfy: $(eye-closed)";
-  statusBarItem.tooltip = "Copilot Ntfy is idle — click to start";
+  const md = new vscode.MarkdownString(
+    "**Copilot Ntfy** is idle\n\n" +
+    "[Start watching](command:copilotNtfy.startWatching) · " +
+    "[Open settings](command:copilotNtfy.openSettings)"
+  );
+  md.isTrusted = true;
+  statusBarItem.tooltip = md;
   statusBarItem.command = "copilotNtfy.startWatching";
 }
 
