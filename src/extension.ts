@@ -242,16 +242,12 @@ async function startWatching() {
 
   _startPolling();
   writeSharedIsWatching(true); // broadcast to all other windows
-  vscode.window.showInformationMessage(
-    `Copilot Ntfy: Watching → ${getNtfyServer()}/${topic}`
-  );
 }
 
 function stopWatching() {
   if (!isWatching) return;
   _stopPolling();
   writeSharedIsWatching(false); // broadcast to all other windows
-  vscode.window.showInformationMessage("Copilot Ntfy: Stopped watching.");
 }
 
 // ── Log file finder ───────────────────────────────────────────
