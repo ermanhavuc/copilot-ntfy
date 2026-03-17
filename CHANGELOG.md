@@ -3,6 +3,7 @@
 ## [1.0.0] - 2026-03-17
 
 ### Added
+
 - Initial release.
 - Polls GitHub Copilot Chat log file for `editAgent` job completions.
 - Sends ntfy.sh push notifications with model name and duration.
