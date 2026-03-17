@@ -1,5 +1,7 @@
 # Copilot Ntfy Notifier
 
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/MrCarrotLabs.copilot-ntfy?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=MrCarrotLabs.copilot-ntfy)
+
 A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications when a **GitHub Copilot agent job** finishes — so you can walk away and get pinged on your phone when Copilot is done.
 
 ## Features
