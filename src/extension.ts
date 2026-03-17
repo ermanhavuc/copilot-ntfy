@@ -312,7 +312,7 @@ function pollLog() {
     if (/ccreq:.*\| cancell?ed \|.*\[panel\/editAgent/.test(line)) {
       const jobInfo = parseJobInfo(line);
       pendingCcreqLine = "";
-      handleJobCancelled(jobInfo);
+      // handleJobCancelled(jobInfo);
     }
 
     // ccreq promptFiltered → content safety / RAI filter hit upstream
