@@ -26,20 +26,20 @@ A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications whe
 
 ## Configuration
 
-| Setting | Default | Description |
-|---|---|---|
-| `copilotNtfy.ntfyServer` | `https://ntfy.sh` | ntfy server URL (use your self-hosted URL if applicable) |
-| `copilotNtfy.ntfyTopic` | _(empty)_ | ntfy topic to publish notifications to |
-| `copilotNtfy.pollIntervalMs` | `5000` | How often to poll the log file in milliseconds |
-| `copilotNtfy.autoStart` | `true` | Automatically start watching when VS Code opens |
+| Setting                      | Default           | Description                                              |
+| ---------------------------- | ----------------- | -------------------------------------------------------- |
+| `copilotNtfy.ntfyServer`     | `https://ntfy.sh` | ntfy server URL (use your self-hosted URL if applicable) |
+| `copilotNtfy.ntfyTopic`      | _(empty)_         | ntfy topic to publish notifications to                   |
+| `copilotNtfy.pollIntervalMs` | `5000`            | How often to poll the log file in milliseconds           |
+| `copilotNtfy.autoStart`      | `true`            | Automatically start watching when VS Code opens          |
 
 ## Commands
 
-| Command | Description |
-|---|---|
+| Command                        | Description                         |
+| ------------------------------ | ----------------------------------- |
 | `Copilot Ntfy: Start Watching` | Begin watching the Copilot Chat log |
-| `Copilot Ntfy: Stop Watching` | Stop watching |
-| `Copilot Ntfy: Set ntfy Topic` | Set or update the ntfy topic |
+| `Copilot Ntfy: Stop Watching`  | Stop watching                       |
+| `Copilot Ntfy: Set ntfy Topic` | Set or update the ntfy topic        |
 
 ## How it Works
 
