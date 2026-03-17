@@ -2,8 +2,8 @@
   "name": "copilot-ntfy",
   "displayName": "Copilot Ntfy Notifier",
   "description": "Sends ntfy.sh notifications when GitHub Copilot agent jobs complete",
-  "version": "1.0.0",
-  "publisher": "erman-havuc",
+  "version": "1.2.2",
+  "publisher": "MrCarrotLabs",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
