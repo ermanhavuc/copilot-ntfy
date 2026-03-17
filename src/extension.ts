@@ -3,21 +3,15 @@ import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
 import * as http from "http";
-
-// ── Types ─────────────────────────────────────────────────────
-interface JobInfo {
-  model: string;
-  duration: string;
-  turns: number;
-  errorCode?: string; // HTTP status ("429", "401") or system code ("ETIMEDOUT")
-}
+import { JobInfo, formatDuration, parseJobInfo } from "./utils";
+export { JobInfo, formatDuration, parseJobInfo } from "./utils";
 
 // ── Globals ───────────────────────────────────────────────────
 let statusBarItem: vscode.StatusBarItem;
 let pollTimer: NodeJS.Timeout | undefined;
 let currentLogPath = "";
 let lastByteOffset = 0;
-let pendingCcreqLine = "";
+let pendingCcreqLine = ""; // "ccreq" = Copilot Chat request line — format: "ccreq: ... | status | model | duration | [context]"
 let pendingTurnCount = 0;
 let pendingJobStartMs = 0;
 let pendingPromptFiltered = false; // set when promptFiltered fires before the associated editAgent failed
@@ -101,7 +95,7 @@ export async function activate(context: vscode.ExtensionContext) {
     _startPolling();
   } else {
     // Auto-start based on setting
-    const autoStart = getConfig().get<boolean>("autoStart", true);
+    const autoStart = getConfig().get<boolean>("autoStart", false);
     const topic = getTopic();
     if (autoStart && topic) {
       await startWatching();
@@ -270,6 +264,14 @@ function findLatestCopilotLog(): string {
   return fs.existsSync(candidate) ? candidate : "";
 }
 
+// ── Pending state reset ─────────────────────────────────────
+function resetPendingState() {
+  pendingCcreqLine = "";
+  pendingTurnCount = 0;
+  pendingJobStartMs = 0;
+  pendingPromptFiltered = false;
+}
+
 // ── Poll loop ─────────────────────────────────────────────────
 function pollLog() {
   const logPath = findLatestCopilotLog();
@@ -325,14 +327,8 @@ function pollLog() {
       pendingTurnCount++;
     }
 
-    // ccreq cancelled/canceled for editAgent → notify immediately (user stopped the job)
-    if (/ccreq:.*\| cancell?ed \|.*\[panel\/editAgent/.test(line)) {
-      const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
-      // handleJobCancelled(jobInfo);
-    }
+    // ccreq cancelled/canceled for editAgent — intentionally not handled to avoid false positives.
+    // Pending state is preserved so a subsequent normal completion still has the correct context.
 
     // ccreq promptFiltered → content safety / RAI filter hit upstream
     // Fires in [copilotLanguageModelWrapper] context, followed by failed in editAgent.
@@ -345,11 +341,9 @@ function pollLog() {
     // If a promptFiltered was just seen upstream, report it as filtered instead.
     if (/ccreq:.*\| failed \|.*\[panel\/editAgent/.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
-      if (pendingPromptFiltered) {
-        pendingPromptFiltered = false;
+      const wasFiltered = pendingPromptFiltered;
+      resetPendingState();
+      if (wasFiltered) {
         handleJobFiltered(jobInfo);
       } else {
         handleJobFailure(jobInfo);
@@ -359,90 +353,44 @@ function pollLog() {
     // ccreq timeout for editAgent → backend too slow or network stalled
     if (/ccreq:.*\| timeout \|.*\[panel\/editAgent/.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
+      resetPendingState();
       handleJobTimeout(jobInfo);
     }
 
     // ccreq empty for editAgent → model returned 0 choices
     if (/ccreq:.*\| empty \|.*\[panel\/editAgent/.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
+      resetPendingState();
       handleJobEmpty(jobInfo);
     }
 
     // ccreq unknown for editAgent → unexpected/unrecognised outcome
     if (/ccreq:.*\| unknown \|.*\[panel\/editAgent/.test(line)) {
       const jobInfo = parseJobInfo(line, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
+      resetPendingState();
       handleJobError(jobInfo);
     }
 
     // ToolCallingLoop stop = entire agent job finished normally
     if (line.includes("[ToolCallingLoop] Stop hook result: shouldContinue=false")) {
       const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
+      resetPendingState();
       handleJobComplete(jobInfo);
     }
 
     // ToolCallingLoop/editAgent runtime error (e.g. unhandled exception in loop)
+    // Regex is intentionally narrow to avoid false positives on lines that merely mention "Error".
     if (
-      /\[ToolCallingLoop\].*[Ee]rror/.test(line) ||
-      /\[editAgent\].*[Ee]rror/.test(line)
+      /\[ToolCallingLoop\] (?:Unhandled |Runtime )?[Ee]rror:/.test(line) ||
+      /\[editAgent\] (?:Unhandled |Runtime )?[Ee]rror:/.test(line)
     ) {
       const errorMatch = line.match(/[Ee]rror[:\s]+(.+)/);
       const reason = errorMatch ? errorMatch[1].trim() : "Unknown error";
       const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
-      pendingCcreqLine = "";
-      pendingTurnCount = 0;
-      pendingJobStartMs = 0;
+      resetPendingState();
       handleJobError(jobInfo, reason);
     }
   }
-}
-
-// ── Parse model + duration from ccreq line ────────────────────
-function formatDuration(ms: number): string {
-  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-  const m = Math.floor(ms / 60000);
-  const s = Math.round((ms % 60000) / 1000);
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-function parseJobInfo(line: string, turns = 0, jobStartMs = 0): JobInfo {
-  if (!line) {
-    return { model: "unknown", duration: "?", turns };
-  }
-
-  // Total job duration if we have a start time; fall back to last-call duration from log line
-  let duration: string;
-  if (jobStartMs > 0) {
-    duration = formatDuration(Date.now() - jobStartMs);
-  } else {
-    const durationMatch = line.match(/(\d+ms)/g);
-    duration = durationMatch ? durationMatch[durationMatch.length - 1] : "?";
-  }
-  // Extract model from any known ccreq status keyword
-  const ALL_STATUSES = "success|cancelled|canceled|failed|promptFiltered|filtered|timeout|empty|unknown";
-  const modelMatch = line.match(
-    new RegExp(`\\| (?:${ALL_STATUSES}) \\| ([^|]+?) \\| \\d+ms`)
-  );
-  const rawModel = modelMatch ? modelMatch[1].trim() : "unknown";
-  const model = rawModel.includes("->") ? rawModel.split("->")[0].trim() : rawModel;
-
-  // Extract HTTP error code (401, 403, 429, 500, …) or system error code
-  const httpCodeMatch = line.match(/\b([45]\d{2})\b/);
-  const sysCodeMatch = line.match(/\b(ETIMEDOUT|ECONNRESET|ENOTFOUND|ECONNREFUSED)\b/);
-  const errorCode = httpCodeMatch?.[1] ?? sysCodeMatch?.[1];
-
-  return { model, duration, turns, errorCode };
 }
 
 // ── Job outcome handlers ──────────────────────────────────────
@@ -548,6 +496,10 @@ function sendNtfy(title: string, body: string, priority = "default", tags = "rob
       );
     }
     res.resume(); // drain the response so the socket is freed
+  });
+
+  req.setTimeout(10000, () => {
+    req.destroy(new Error("ntfy request timed out after 10s"));
   });
 
   req.on("error", (err) => {
