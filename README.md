@@ -8,6 +8,8 @@ A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications whe
 ## Features
 
 - Automatically detects when a Copilot agent (`editAgent`) job completes by tailing the Copilot Chat log file.
+- Includes turn count and measures job duration (useful for multi-turn Copilot jobs).
+- Avoids duplicate notifications across multiple VS Code windows (dedupes repeated events).
 - Pushes a notification to your ntfy topic with the model name and duration.
 - Status bar indicator shows whether the watcher is active.
 - Configurable poll interval, ntfy server, and topic.
