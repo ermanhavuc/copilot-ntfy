@@ -1,5 +1,58 @@
 # Changelog
 
+## [1.5.2] - 2026-03-17
+
+### Added
+
+- Track turn count and job start time for Copilot agent jobs (improved notification context).
+
+### Changed
+
+- Refactor shared state handling to enable last-notification deduplication.
+- Update polling and notification logic to support new JobInfo structure.
+- Update icon and add missing discovery keywords (`notify`, etc.).
+
+## [1.4.2] - 2026-03-17
+
+### Changed
+
+- Commented out job cancellation handling to avoid false negatives.
+
+## [1.4.1] - 2026-03-17
+
+### Fixed
+
+- Improved error handling for job failures.
+
+## [1.3.8] - 2026-03-17
+
+### Changed
+
+- Refactor job model parsing and notification message formatting.
+
+## [1.3.7] - 2026-03-17
+
+### Added
+
+- Cross-window state synchronization (share job status across VS Code windows).
+
+## [1.3.4] - 2026-03-17
+
+### Added
+
+- Added `openSettings` command and `autoStart` setting.
+
+### Changed
+
+- Updated icon and package metadata for better discoverability.
+
+## [1.3.1] - 2026-03-17
+
+### Changed
+
+- Improved log file path resolution across platforms.
+- Added `notify` keyword for marketplace discoverability.
+
 ## [1.0.0] - 2026-03-17
 
 ### Added
