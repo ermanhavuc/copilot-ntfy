@@ -20,7 +20,7 @@ export function formatDuration(ms: number): string {
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   const m = Math.floor(ms / 60000);
   const s = Math.round((ms % 60000) / 1000);
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${m}m ${s}s`;
 }
 
 export function parseJobInfo(line: string, turns = 0, jobStartMs = 0): JobInfo {
