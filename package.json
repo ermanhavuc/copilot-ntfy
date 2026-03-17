@@ -5,14 +5,15 @@
   "version": "1.0.0",
   "publisher": "erman-havuc",
   "license": "MIT",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/erman-havuc/copilot-ntfy"
+    "url": "https://github.com/ermanhavuc/copilot-ntfy"
   },
   "bugs": {
-    "url": "https://github.com/erman-havuc/copilot-ntfy/issues"
+    "url": "https://github.com/ermanhavuc/copilot-ntfy/issues"
   },
-  "homepage": "https://github.com/erman-havuc/copilot-ntfy#readme",
+  "homepage": "https://github.com/ermanhavuc/copilot-ntfy#readme",
   "keywords": [
     "copilot",
     "ntfy",
