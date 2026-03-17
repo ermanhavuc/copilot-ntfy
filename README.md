@@ -15,7 +15,7 @@ A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications whe
 - [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat) extension installed and signed in.
 - An [ntfy.sh](https://ntfy.sh) account (or self-hosted ntfy server) with a topic set up.
 - An app on your phone subscribed to the same topic (ntfy is available for [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) and [iOS](https://apps.apple.com/app/ntfy/id1625396347)).
-- macOS or Linux (the extension reads the VS Code log directory; Windows support is not yet included).
+- macOS, Linux, or Windows.
 
 ## Getting Started
 
@@ -43,7 +43,15 @@ A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications whe
 
 ## How it Works
 
-The extension polls the **GitHub Copilot Chat** log file (located under `~/Library/Application Support/Code/logs` on macOS or `~/.config/Code/logs` on Linux). It watches for `ToolCallingLoop` stop events to detect job completion, then reads the preceding request line to extract the model name and duration, and POSTs to your ntfy server.
+The extension polls the **GitHub Copilot Chat** log file. The log directory is resolved automatically per platform:
+
+| OS      | Log directory                             |
+| ------- | ----------------------------------------- |
+| macOS   | `~/Library/Application Support/Code/logs` |
+| Windows | `%APPDATA%\Code\logs`                     |
+| Linux   | `~/.config/Code/logs`                     |
+
+It watches for `ToolCallingLoop` stop events to detect job completion, then reads the preceding request line to extract the model name and duration, and POSTs to your ntfy server.
 
 No Copilot API calls are made; the extension is purely passive and read-only with respect to Copilot itself.
 
