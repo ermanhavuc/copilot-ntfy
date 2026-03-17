@@ -1,0 +1,83 @@
+{
+  "name": "copilot-ntfy",
+  "displayName": "Copilot Ntfy Notifier",
+  "description": "Sends ntfy.sh notifications when GitHub Copilot agent jobs complete",
+  "version": "1.0.0",
+  "publisher": "erman-havuc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/erman-havuc/copilot-ntfy"
+  },
+  "bugs": {
+    "url": "https://github.com/erman-havuc/copilot-ntfy/issues"
+  },
+  "homepage": "https://github.com/erman-havuc/copilot-ntfy#readme",
+  "keywords": [
+    "copilot",
+    "ntfy",
+    "notification",
+    "agent",
+    "github copilot"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "copilotNtfy.startWatching",
+        "title": "Copilot Ntfy: Start Watching"
+      },
+      {
+        "command": "copilotNtfy.stopWatching",
+        "title": "Copilot Ntfy: Stop Watching"
+      },
+      {
+        "command": "copilotNtfy.setTopic",
+        "title": "Copilot Ntfy: Set ntfy Topic"
+      }
+    ],
+    "configuration": {
+      "title": "Copilot Ntfy",
+      "properties": {
+        "copilotNtfy.ntfyServer": {
+          "type": "string",
+          "default": "https://ntfy.sh",
+          "description": "ntfy server URL"
+        },
+        "copilotNtfy.ntfyTopic": {
+          "type": "string",
+          "default": "",
+          "description": "ntfy topic to send notifications to"
+        },
+        "copilotNtfy.pollIntervalMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "How often to poll the log file (milliseconds)"
+        },
+        "copilotNtfy.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start watching when VS Code opens"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.3.0"
+  }
+}
