@@ -20,7 +20,10 @@
     "notification",
     "agent",
     "github copilot",
-    "notify"
+    "notify",
+    "notifier",
+    "github",
+    "vscode"
   ],
   "engines": {
     "vscode": "^1.85.0"
