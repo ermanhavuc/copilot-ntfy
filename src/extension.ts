@@ -25,31 +25,42 @@ let extensionContext: vscode.ExtensionContext;
 
 // ── Shared state (cross-window IPC) ──────────────────────────
 const SHARED_STATE_FILE = "watchState.json";
+const NOTIF_DEDUP_MS = 5000;
+
+interface SharedStateData {
+  isWatching: boolean;
+  lastNotifKey?: string;
+  lastNotifTs?: number;
+}
 
 function getSharedStatePath(): string {
   return path.join(extensionContext.globalStorageUri.fsPath, SHARED_STATE_FILE);
 }
 
-function readSharedIsWatching(): boolean {
+function readSharedStateData(): SharedStateData {
   try {
-    const data = JSON.parse(fs.readFileSync(getSharedStatePath(), "utf8"));
-    return data.isWatching === true;
+    return JSON.parse(fs.readFileSync(getSharedStatePath(), "utf8"));
   } catch {
-    return false;
+    return { isWatching: false };
   }
 }
 
-function writeSharedIsWatching(value: boolean): void {
+function writeSharedStateData(data: SharedStateData): void {
   try {
     fs.mkdirSync(extensionContext.globalStorageUri.fsPath, { recursive: true });
-    fs.writeFileSync(
-      getSharedStatePath(),
-      JSON.stringify({ isWatching: value }),
-      "utf8"
-    );
+    fs.writeFileSync(getSharedStatePath(), JSON.stringify(data), "utf8");
   } catch {
     // ignore write errors
   }
+}
+
+function readSharedIsWatching(): boolean {
+  return readSharedStateData().isWatching === true;
+}
+
+function writeSharedIsWatching(value: boolean): void {
+  const data = readSharedStateData();
+  writeSharedStateData({ ...data, isWatching: value });
 }
 
 // ── Activation ────────────────────────────────────────────────
@@ -458,6 +469,16 @@ function sendNtfy(title: string, body: string, priority = "default", tags = "rob
   const server = getNtfyServer();
   const topic = getTopic();
   if (!topic) return;
+
+  // Dedup: skip if the exact same notification was already sent within NOTIF_DEDUP_MS
+  // (guards against two extension instances — e.g. installed + dev host — double-firing)
+  const notifKey = `${title}\x00${body}`;
+  const state = readSharedStateData();
+  const now = Date.now();
+  if (state.lastNotifKey === notifKey && now - (state.lastNotifTs ?? 0) < NOTIF_DEDUP_MS) {
+    return;
+  }
+  writeSharedStateData({ ...state, lastNotifKey: notifKey, lastNotifTs: now });
 
   let url: URL;
   try {
