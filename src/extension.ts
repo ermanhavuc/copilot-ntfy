@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import * as https from "https";
 import * as http from "http";
 
@@ -19,9 +18,13 @@ let currentLogPath = "";
 let lastByteOffset = 0;
 let pendingCcreqLine = "";
 let isWatching = false;
+let windowExtHostLogDir = ""; // set from context.logUri — unique per VS Code window
 
 // ── Activation ────────────────────────────────────────────────
 export async function activate(context: vscode.ExtensionContext) {
+  // Per-window log directory: parent of this extension's log folder is the shared exthost dir
+  windowExtHostLogDir = path.dirname(context.logUri.fsPath);
+
   // Status bar
   statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
@@ -169,48 +172,12 @@ function stopWatching() {
 
 // ── Log file finder ───────────────────────────────────────────
 function findLatestCopilotLog(): string {
-  const platform = os.platform();
-  const base =
-    platform === "darwin"
-      ? path.join(os.homedir(), "Library", "Application Support", "Code", "logs")
-      : platform === "win32"
-      ? path.join(process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "Code", "logs")
-      : path.join(os.homedir(), ".config", "Code", "logs");
-
-  if (!fs.existsSync(base)) return "";
-
-  let latest = { mtime: 0, filePath: "" };
-
-  function walk(dir: string) {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-      } else if (
-        entry.isFile() &&
-        entry.name === "GitHub Copilot Chat.log" &&
-        full.includes("GitHub.copilot-chat")
-      ) {
-        try {
-          const stat = fs.statSync(full);
-          if (stat.mtimeMs > latest.mtime) {
-            latest = { mtime: stat.mtimeMs, filePath: full };
-          }
-        } catch {
-          // skip
-        }
-      }
-    }
-  }
-
-  walk(base);
-  return latest.filePath;
+  // Always use the Copilot Chat log that belongs to this specific VS Code window.
+  // windowExtHostLogDir is derived from context.logUri which is unique per window,
+  // so each window's extension instance watches only its own log.
+  if (!windowExtHostLogDir) return "";
+  const candidate = path.join(windowExtHostLogDir, "GitHub.copilot-chat", "GitHub Copilot Chat.log");
+  return fs.existsSync(candidate) ? candidate : "";
 }
 
 // ── Poll loop ─────────────────────────────────────────────────
