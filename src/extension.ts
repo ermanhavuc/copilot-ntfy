@@ -19,11 +19,46 @@ let lastByteOffset = 0;
 let pendingCcreqLine = "";
 let isWatching = false;
 let windowExtHostLogDir = ""; // set from context.logUri — unique per VS Code window
+let extensionContext: vscode.ExtensionContext;
+
+// ── Shared state (cross-window IPC) ──────────────────────────
+const SHARED_STATE_FILE = "watchState.json";
+
+function getSharedStatePath(): string {
+  return path.join(extensionContext.globalStorageUri.fsPath, SHARED_STATE_FILE);
+}
+
+function readSharedIsWatching(): boolean {
+  try {
+    const data = JSON.parse(fs.readFileSync(getSharedStatePath(), "utf8"));
+    return data.isWatching === true;
+  } catch {
+    return false;
+  }
+}
+
+function writeSharedIsWatching(value: boolean): void {
+  try {
+    fs.mkdirSync(extensionContext.globalStorageUri.fsPath, { recursive: true });
+    fs.writeFileSync(
+      getSharedStatePath(),
+      JSON.stringify({ isWatching: value }),
+      "utf8"
+    );
+  } catch {
+    // ignore write errors
+  }
+}
 
 // ── Activation ────────────────────────────────────────────────
 export async function activate(context: vscode.ExtensionContext) {
+  extensionContext = context;
+
   // Per-window log directory: parent of this extension's log folder is the shared exthost dir
   windowExtHostLogDir = path.dirname(context.logUri.fsPath);
+
+  // Ensure global storage directory exists (needed for shared state file)
+  fs.mkdirSync(context.globalStorageUri.fsPath, { recursive: true });
 
   // Status bar
   statusBarItem = vscode.window.createStatusBarItem(
@@ -45,22 +80,36 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // Auto-start based on setting
-  const autoStart = getConfig().get<boolean>("autoStart", true);
-  const topic = getTopic();
-  if (autoStart && topic) {
-    await startWatching();
-  } else if (autoStart && !topic) {
-    // Prompt for topic then start
-    const newTopic = await promptForTopic();
-    if (newTopic) {
+  // ── Cross-window sync ──────────────────────────────────────
+  // If another window is already watching, start polling immediately
+  if (readSharedIsWatching()) {
+    _startPolling();
+  } else {
+    // Auto-start based on setting
+    const autoStart = getConfig().get<boolean>("autoStart", true);
+    const topic = getTopic();
+    if (autoStart && topic) {
       await startWatching();
+    } else if (autoStart && !topic) {
+      const newTopic = await promptForTopic();
+      if (newTopic) {
+        await startWatching();
+      }
     }
   }
+
+  // Watch the shared state file so this window reacts when another window
+  // starts or stops watching (fs.watchFile uses polling — reliable cross-process)
+  fs.watchFile(getSharedStatePath(), { interval: 500 }, () => {
+    syncFromSharedState();
+  });
 }
 
 export function deactivate() {
-  stopWatching();
+  // Stop watching the shared state file — do not change it;
+  // other windows should continue running unaffected.
+  try { fs.unwatchFile(getSharedStatePath()); } catch { /* ignore */ }
+  _stopPolling();
 }
 
 // ── Status bar helpers ────────────────────────────────────────
@@ -128,7 +177,39 @@ async function promptForTopic(): Promise<string | undefined> {
   return undefined;
 }
 
-// ── Start / Stop ──────────────────────────────────────────────
+// ── Start / Stop (core polling, no UI side-effects) ──────────
+function _startPolling() {
+  isWatching = true;
+  currentLogPath = "";
+  lastByteOffset = 0;
+  pendingCcreqLine = "";
+  setStatusWatching();
+  if (!pollTimer) {
+    pollTimer = setInterval(pollLog, getPollInterval());
+  }
+}
+
+function _stopPolling() {
+  isWatching = false;
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+  setStatusIdle();
+}
+
+// Triggered by fs.watchFile when another window changes the shared state file
+function syncFromSharedState() {
+  const newWatching = readSharedIsWatching();
+  if (newWatching === isWatching) return;
+  if (newWatching) {
+    _startPolling();
+  } else {
+    _stopPolling();
+  }
+}
+
+// ── Start / Stop (user-facing commands) ──────────────────────
 async function startWatching() {
   if (isWatching) {
     vscode.window.showInformationMessage("Copilot Ntfy is already watching.");
@@ -147,13 +228,8 @@ async function startWatching() {
     }
   }
 
-  isWatching = true;
-  currentLogPath = "";
-  lastByteOffset = 0;
-  pendingCcreqLine = "";
-  setStatusWatching();
-
-  pollTimer = setInterval(pollLog, getPollInterval());
+  _startPolling();
+  writeSharedIsWatching(true); // broadcast to all other windows
   vscode.window.showInformationMessage(
     `Copilot Ntfy: Watching → ${getNtfyServer()}/${topic}`
   );
@@ -161,12 +237,8 @@ async function startWatching() {
 
 function stopWatching() {
   if (!isWatching) return;
-  isWatching = false;
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
-  setStatusIdle();
+  _stopPolling();
+  writeSharedIsWatching(false); // broadcast to all other windows
   vscode.window.showInformationMessage("Copilot Ntfy: Stopped watching.");
 }
 
