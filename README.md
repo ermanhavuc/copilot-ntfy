@@ -3,11 +3,12 @@
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/MrCarrotLabs.copilot-ntfy?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=MrCarrotLabs.copilot-ntfy)
 [![Open VSX](https://img.shields.io/open-vsx/v/MrCarrotLabs/copilot-ntfy?label=Open%20VSX)](https://open-vsx.org/extension/MrCarrotLabs/copilot-ntfy)
 
-A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications when a **GitHub Copilot agent job** finishes — so you can walk away and get pinged on your phone when Copilot is done.
+A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications when a **GitHub Copilot agent job** finishes or gets stuck waiting on you — so you can walk away and get pinged on your phone when Copilot is done or needs input.
 
 ## Features
 
 - Automatically detects when a Copilot agent (`editAgent`) job completes by tailing the Copilot Chat log file.
+- Detects when Copilot appears to be waiting for your reply or for terminal input, and notifies only if that wait stays unresolved.
 - Includes turn count and measures job duration (useful for multi-turn Copilot jobs).
 - Avoids duplicate notifications across multiple VS Code windows (dedupes repeated events).
 - Pushes a notification to your ntfy topic with the model name and duration.
@@ -57,7 +58,7 @@ The extension polls the **GitHub Copilot Chat** log file. The log directory is r
 | Windows | `%APPDATA%\Code\logs`                     |
 | Linux   | `~/.config/Code/logs`                     |
 
-It watches for `ToolCallingLoop` stop events to detect job completion, then reads the preceding request line to extract the model name and duration, and POSTs to your ntfy server.
+It watches for `ToolCallingLoop` stop events to detect job completion, and also tracks unresolved `tool_calls` / `copilotLanguageModelWrapper` sequences to infer when Copilot is likely waiting on a user reply or terminal input. It then reads the relevant request line to extract the model name and duration, and POSTs to your ntfy server.
 
 No Copilot API calls are made; the extension is purely passive and read-only with respect to Copilot itself.
 

@@ -11,15 +11,20 @@ export interface JobInfo {
   errorCode?: string; // HTTP status ("429", "401") or system code ("ETIMEDOUT")
 }
 
+export type WaitStateKind = "question" | "terminal";
+
 // ── Pre-compiled regex ────────────────────────────────────────
 // Extracts model name from a ccreq log line (pattern never changes at runtime)
 const CCREQ_MODEL_RE = /\| (?:success|cancelled|canceled|failed|promptFiltered|filtered|timeout|empty|unknown) \| ([^|]+?) \| \d+ms/;
+const CCREQ_CONTEXT_RE = /\| \[([^\]]+)\]\s*$/;
+const FINISH_REASON_RE = /message 0 returned\. finish reason: \[([^\]]+)\]/;
 
 // ── Helpers ───────────────────────────────────────────────────
 export function formatDuration(ms: number): string {
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   const m = Math.floor(ms / 60000);
   const s = Math.round((ms % 60000) / 1000);
+  if (s === 0) return `${m}m`;
   return `${m}m ${s}s`;
 }
 
@@ -47,4 +52,33 @@ export function parseJobInfo(line: string, turns = 0, jobStartMs = 0): JobInfo {
   const errorCode = httpCodeMatch?.[1] ?? sysCodeMatch?.[1];
 
   return { model, duration, turns, errorCode };
+}
+
+export function parseFinishReason(line: string): string | undefined {
+  const match = line.match(FINISH_REASON_RE);
+  return match?.[1];
+}
+
+export function parseCcreqContext(line: string): string | undefined {
+  const match = line.match(CCREQ_CONTEXT_RE);
+  return match?.[1];
+}
+
+export function detectWaitStateCandidate(
+  line: string,
+  lastFinishReason: string | undefined,
+  hasPendingEditAgentTurn: boolean
+): WaitStateKind | undefined {
+  const context = parseCcreqContext(line);
+  if (!context) return undefined;
+
+  if (lastFinishReason === "tool_calls" && context.startsWith("panel/editAgent")) {
+    return "question";
+  }
+
+  if (hasPendingEditAgentTurn && context === "copilotLanguageModelWrapper") {
+    return "terminal";
+  }
+
+  return undefined;
 }

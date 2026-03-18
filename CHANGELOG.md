@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.3] - 2026-03-18
+
+### Added
+
+- Notify when Copilot appears to be waiting for a user reply after an unresolved `tool_calls` handoff.
+- Notify when Copilot appears to be waiting for terminal input after an unresolved `copilotLanguageModelWrapper` handoff.
+
+### Changed
+
+- Delay wait-state notifications so ordinary multi-turn agent runs do not trigger false positives.
+
 ## [1.5.2] - 2026-03-17
 
 ### Added

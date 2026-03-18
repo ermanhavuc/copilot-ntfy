@@ -1,6 +1,6 @@
 # Copilot Ntfy — Project Guidelines
 
-VS Code extension (`MrCarrotLabs.copilot-ntfy`) that sends [ntfy.sh](https://ntfy.sh) push notifications when a GitHub Copilot agent job finishes. Works by **tailing the Copilot Chat log file** — no Copilot API calls.
+VS Code extension (`MrCarrotLabs.copilot-ntfy`) that sends [ntfy.sh](https://ntfy.sh) push notifications when a GitHub Copilot agent job finishes or appears to be waiting on the user. Works by **tailing the Copilot Chat log file** — no Copilot API calls.
 
 ## Build and Test
 
@@ -20,7 +20,7 @@ Tests use Node's built-in `node:test` runner — no Jest/Mocha. Always run `npm 
 ```
 src/
   extension.ts   # VS Code host: activation, commands, poll loop, ntfy HTTP POST
-  utils.ts       # Pure, VS Code-free helpers: formatDuration(), parseJobInfo()
+  utils.ts       # Pure, VS Code-free helpers: log parsing, formatDuration(), parseJobInfo()
   test/
     utils.test.ts  # Unit tests for utils.ts only (node:test + node:assert)
 ```
@@ -34,9 +34,9 @@ src/
 
 - Log path: `<windowExtHostLogDir>/GitHub.copilot-chat/GitHub Copilot Chat.log`
 - Reads only **new bytes** each tick via `lastByteOffset` (tail-style, no re-scan).
-- Pre-compiled module-level regexes detect `ccreq` success/failed/timeout/empty lines and `ToolCallingLoop` stop hooks.
+- Pre-compiled module-level regexes detect `ccreq` success/failed/timeout/empty lines, unresolved wait-state handoffs, and `ToolCallingLoop` stop hooks.
 
-**Pending state machine** — four module-level vars (`pendingCcreqLine`, `pendingTurnCount`, `pendingJobStartMs`, `pendingPromptFiltered`) track one in-flight job.
+**Pending state machine** — module-level vars track one in-flight job plus delayed wait-state notifications (`pendingCcreqLine`, `pendingTurnCount`, `pendingJobStartMs`, `pendingPromptFiltered`, question-wait state, terminal-wait state).
 
 **`sendNtfy`** — raw `http`/`https` POST (no fetch/axios) with duplicate-send guard (`lastNotifKey` + `lastNotifTs` in `watchState.json`, 5 s window).
 
@@ -53,6 +53,7 @@ src/
 
 - **Log path is per-window**: `windowExtHostLogDir` is `parent(context.logUri)`. Breaking this derivation silently tails the wrong (or nonexistent) log.
 - **`promptFiltered` ordering**: the content-safety event fires in a _different log context_ before the `editAgent failed` line — tracked with a boolean flag, not by timestamp correlation.
+- **Wait-state detection is heuristic**: `tool_calls` and `copilotLanguageModelWrapper` can appear in normal runs, so unresolved wait notifications must be delayed and cleared as soon as the agent resumes.
 - **Tests import from `out/`**: `import { ... } from "../utils"` resolves to `out/utils.js`. Running the test source directly without compiling first will fail.
 - **No redirect following in `sendNtfy`**: if your ntfy server issues a redirect, it is silently dropped.
 - **Cancelled jobs are intentionally ignored**: do not add cancellation handling without also resetting pending state.

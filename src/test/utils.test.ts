@@ -7,7 +7,13 @@ import { describe, it } from "node:test";
 
 // Import from the compiled output (CommonJS). The compile step runs first via `npm test`.
 // Using a relative path from out/test/ → out/extension.js
-import { formatDuration, parseJobInfo } from "../utils";
+import {
+  detectWaitStateCandidate,
+  formatDuration,
+  parseCcreqContext,
+  parseFinishReason,
+  parseJobInfo,
+} from "../utils";
 
 // ── formatDuration ────────────────────────────────────────────────────────────
 
@@ -47,6 +53,18 @@ const BYOK_LINE =
 
 const TIMEOUT_ETIMEDOUT_LINE =
   "2024-01-01T00:00:00.000Z [info] ccreq: abc123 | timeout | gpt-4o | 5000ms | [panel/editAgent] ETIMEDOUT";
+
+const TOOL_CALLS_LINE =
+  "2026-03-18 12:15:43.470 [info] message 0 returned. finish reason: [tool_calls]";
+
+const STOP_LINE =
+  "2026-03-18 12:15:10.154 [info] message 0 returned. finish reason: [stop]";
+
+const QUESTION_LINE =
+  "2026-03-18 12:15:43.473 [info] ccreq:cbae6452.copilotmd | success | gemini-3-flash-preview | 2506ms | [panel/editAgent]";
+
+const TERMINAL_WAIT_LINE =
+  "2026-03-18 11:56:50.344 [info] ccreq:83781c9b.copilotmd | success | gpt-5.4 -> gpt-5.4-2026-03-05 | 4495ms | [copilotLanguageModelWrapper]";
 
 describe("parseJobInfo", () => {
   it("returns unknown/? for an empty line", () => {
@@ -97,5 +115,51 @@ describe("parseJobInfo", () => {
   it("passes through turns count", () => {
     const info = parseJobInfo(SUCCESS_LINE, 7, 0);
     assert.equal(info.turns, 7);
+  });
+});
+
+describe("parseFinishReason", () => {
+  it("extracts tool_calls finish reasons", () => {
+    assert.equal(parseFinishReason(TOOL_CALLS_LINE), "tool_calls");
+  });
+
+  it("extracts stop finish reasons", () => {
+    assert.equal(parseFinishReason(STOP_LINE), "stop");
+  });
+
+  it("returns undefined for unrelated lines", () => {
+    assert.equal(parseFinishReason(SUCCESS_LINE), undefined);
+  });
+});
+
+describe("parseCcreqContext", () => {
+  it("extracts panel editAgent context", () => {
+    assert.equal(parseCcreqContext(QUESTION_LINE), "panel/editAgent");
+  });
+
+  it("extracts copilot language model wrapper context", () => {
+    assert.equal(parseCcreqContext(TERMINAL_WAIT_LINE), "copilotLanguageModelWrapper");
+  });
+
+  it("returns undefined for non-ccreq lines", () => {
+    assert.equal(parseCcreqContext(TOOL_CALLS_LINE), undefined);
+  });
+});
+
+describe("detectWaitStateCandidate", () => {
+  it("detects unresolved question handoff candidates", () => {
+    assert.equal(detectWaitStateCandidate(QUESTION_LINE, "tool_calls", true), "question");
+  });
+
+  it("detects unresolved terminal wait candidates", () => {
+    assert.equal(detectWaitStateCandidate(TERMINAL_WAIT_LINE, undefined, true), "terminal");
+  });
+
+  it("ignores wrapper success without an active editAgent turn", () => {
+    assert.equal(detectWaitStateCandidate(TERMINAL_WAIT_LINE, undefined, false), undefined);
+  });
+
+  it("ignores editAgent success when the finish reason was not tool_calls", () => {
+    assert.equal(detectWaitStateCandidate(QUESTION_LINE, "stop", true), undefined);
   });
 });
