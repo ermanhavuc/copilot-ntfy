@@ -325,13 +325,15 @@ function startTerminalWaitState(line: string) {
   pendingTerminalWaitNotified = false;
 }
 
-function flushPendingWaitNotifications() {
+function flushPendingWaitNotifications(logSilent: boolean) {
   const now = Date.now();
 
+  // When the log is silent (no new bytes this tick), the agent is truly idle → notify immediately.
+  // The time-based thresholds serve as a backstop if the log keeps trickling minor output.
   if (
     pendingQuestionSinceMs > 0 &&
     !pendingQuestionNotified &&
-    now - pendingQuestionSinceMs >= QUESTION_NOTIFY_DELAY_MS
+    (logSilent || now - pendingQuestionSinceMs >= QUESTION_NOTIFY_DELAY_MS)
   ) {
     const jobInfo = parseJobInfo(pendingQuestionLine || pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
     handleQuestionWait(jobInfo);
@@ -341,7 +343,7 @@ function flushPendingWaitNotifications() {
   if (
     pendingTerminalWaitSinceMs > 0 &&
     !pendingTerminalWaitNotified &&
-    now - pendingTerminalWaitSinceMs >= TERMINAL_WAIT_NOTIFY_DELAY_MS
+    (logSilent || now - pendingTerminalWaitSinceMs >= TERMINAL_WAIT_NOTIFY_DELAY_MS)
   ) {
     const jobInfo = parseJobInfo(pendingCcreqLine || pendingTerminalWaitLine, pendingTurnCount, pendingJobStartMs);
     handleTerminalWait(jobInfo);
@@ -374,7 +376,7 @@ function pollLog() {
   }
 
   if (currentSize <= lastByteOffset) {
-    flushPendingWaitNotifications();
+    flushPendingWaitNotifications(true);  // log silent — agent idle
     return;
   }
 
@@ -494,7 +496,7 @@ function pollLog() {
     }
   }
 
-  flushPendingWaitNotifications();
+  flushPendingWaitNotifications(false);  // just processed new content
 }
 
 // ── Job outcome handlers ──────────────────────────────────────
