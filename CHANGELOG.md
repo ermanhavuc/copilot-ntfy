@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.6] - 2026-03-18
+
+### Changed
+
+- Rename the unresolved `tool_calls` wait notification to `Copilot Needs Input` so it covers reply, approval, and similar user-input handoffs more accurately.
+
+### Fixed
+
+- Give terminal-wait notifications precedence over the generic unresolved-input notification so terminal handoffs are not mislabeled as reply waits.
+
 ## [1.6.5] - 2026-03-18
 
 ### Fixed

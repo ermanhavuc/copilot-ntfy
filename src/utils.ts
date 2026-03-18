@@ -20,6 +20,8 @@ export interface LoopStopDecision {
   notifyCompletion: boolean;
 }
 
+export type WaitNotificationKind = "input" | "terminal";
+
 export type WaitStateKind = "question" | "terminal";
 
 // ── Pre-compiled regex ────────────────────────────────────────
@@ -90,6 +92,21 @@ export function getLoopStopDecision(
   return {
     notifyCompletion: !hasPendingQuestionWait && !hasPendingTerminalWait,
   };
+}
+
+export function getWaitNotificationKind(
+  isQuestionDue: boolean,
+  isTerminalDue: boolean
+): WaitNotificationKind | undefined {
+  if (isTerminalDue) {
+    return "terminal";
+  }
+
+  if (isQuestionDue) {
+    return "input";
+  }
+
+  return undefined;
 }
 
 export function parseCcreqContext(line: string): string | undefined {

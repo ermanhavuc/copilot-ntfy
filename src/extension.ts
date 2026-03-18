@@ -6,6 +6,7 @@ import * as http from "http";
 import {
   detectWaitStateCandidate,
   getLoopStopDecision,
+  getWaitNotificationKind,
   getWaitStateClearDecision,
   JobInfo,
   formatDuration,
@@ -15,6 +16,7 @@ import {
 export {
   detectWaitStateCandidate,
   getLoopStopDecision,
+  getWaitNotificationKind,
   getWaitStateClearDecision,
   JobInfo,
   formatDuration,
@@ -337,27 +339,29 @@ function startTerminalWaitState(line: string) {
 
 function flushPendingWaitNotifications(logSilent: boolean) {
   const now = Date.now();
+  const isQuestionDue =
+    pendingQuestionSinceMs > 0 &&
+    !pendingQuestionNotified &&
+    (logSilent || now - pendingQuestionSinceMs >= QUESTION_NOTIFY_DELAY_MS);
+  const isTerminalDue =
+    pendingTerminalWaitSinceMs > 0 &&
+    !pendingTerminalWaitNotified &&
+    (logSilent || now - pendingTerminalWaitSinceMs >= TERMINAL_WAIT_NOTIFY_DELAY_MS);
+  const waitNotificationKind = getWaitNotificationKind(isQuestionDue, isTerminalDue);
 
   // When the log is silent (no new bytes this tick), the agent is truly idle → notify immediately.
   // The time-based thresholds serve as a backstop if the log keeps trickling minor output.
-  if (
-    pendingQuestionSinceMs > 0 &&
-    !pendingQuestionNotified &&
-    (logSilent || now - pendingQuestionSinceMs >= QUESTION_NOTIFY_DELAY_MS)
-  ) {
+  if (waitNotificationKind === "input") {
     const jobInfo = parseJobInfo(pendingQuestionLine || pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
     handleQuestionWait(jobInfo);
     pendingQuestionNotified = true;
   }
 
-  if (
-    pendingTerminalWaitSinceMs > 0 &&
-    !pendingTerminalWaitNotified &&
-    (logSilent || now - pendingTerminalWaitSinceMs >= TERMINAL_WAIT_NOTIFY_DELAY_MS)
-  ) {
+  if (waitNotificationKind === "terminal") {
     const jobInfo = parseJobInfo(pendingCcreqLine || pendingTerminalWaitLine, pendingTurnCount, pendingJobStartMs);
     handleTerminalWait(jobInfo);
     pendingTerminalWaitNotified = true;
+    clearQuestionWaitState();
   }
 }
 
@@ -442,6 +446,7 @@ function pollLog() {
     if (RE_WRAPPER_SUCCESS.test(line)) {
       const waitCandidate = detectWaitStateCandidate(line, lastFinishReason, pendingTurnCount > 0);
       if (waitCandidate === "terminal") {
+        clearQuestionWaitState();
         startTerminalWaitState(line);
       }
       lastFinishReason = undefined;
@@ -573,9 +578,9 @@ function handleQuestionWait(job: JobInfo) {
   const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
   const meta = `${job.model} · ${job.duration}`;
   const msgLines = workspace
-    ? [workspace, "Copilot needs your answer.", meta]
-    : ["Copilot needs your answer.", meta];
-  sendNtfy("Copilot Needs Your Reply", msgLines.join("\n"), "high", "robot,question");
+    ? [workspace, "Copilot is waiting for your input.", meta]
+    : ["Copilot is waiting for your input.", meta];
+  sendNtfy("Copilot Needs Input", msgLines.join("\n"), "high", "robot,question");
 }
 
 function handleTerminalWait(job: JobInfo) {

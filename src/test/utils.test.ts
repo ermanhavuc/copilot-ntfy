@@ -11,6 +11,7 @@ import {
   detectWaitStateCandidate,
   formatDuration,
   getLoopStopDecision,
+  getWaitNotificationKind,
   getWaitStateClearDecision,
   parseCcreqContext,
   parseFinishReason,
@@ -210,5 +211,19 @@ describe("getLoopStopDecision", () => {
     assert.deepEqual(getLoopStopDecision(false, true), {
       notifyCompletion: false,
     });
+  });
+});
+
+describe("getWaitNotificationKind", () => {
+  it("prefers terminal notifications when both wait states are due", () => {
+    assert.equal(getWaitNotificationKind(true, true), "terminal");
+  });
+
+  it("returns input when only the unresolved tool-call wait is due", () => {
+    assert.equal(getWaitNotificationKind(true, false), "input");
+  });
+
+  it("returns undefined when neither wait state is due", () => {
+    assert.equal(getWaitNotificationKind(false, false), undefined);
   });
 });
