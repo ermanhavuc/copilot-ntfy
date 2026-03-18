@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.5] - 2026-03-18
+
+### Fixed
+
+- Suppress the normal job-finished notification while a reply-wait or terminal-wait notification is still pending, preventing duplicate alerts for the same Copilot handoff.
+
+## [1.6.4] - 2026-03-18
+
+### Fixed
+
+- Keep real reply-wait notifications alive when an unresolved `tool_calls` handoff is followed by `finish reason: [stop]` before the log goes silent.
+
 ## [1.6.3] - 2026-03-18
 
 ### Fixed

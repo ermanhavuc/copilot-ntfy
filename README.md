@@ -67,12 +67,12 @@ The extension polls the **GitHub Copilot Chat** log file. The log directory is r
 
 It watches for `ToolCallingLoop` stop events to detect job completion, and tracks two additional wait states:
 
-| Notification                              | Trigger                                                                                                                                                           |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Copilot is asking you a question**      | An LLM turn finishes with `finish reason: [tool_calls]` inside `editAgent` and the log goes silent — the agent handed back control and is waiting for your reply. |
-| **Copilot is waiting for terminal input** | A bare `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                      |
+| Notification                              | Trigger                                                                                                                                                               |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Copilot is asking you a question**      | An unresolved `tool_calls` handoff is followed by an `editAgent` success, and the log then goes silent — the agent handed back control and is waiting for your reply. |
+| **Copilot is waiting for terminal input** | A bare `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                          |
 
-Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). If the agent resumes on its own (normal multi-turn continuation), or if the wrapper success is part of ordinary terminal command execution, the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
+Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). A reply-wait remains pending even if the follow-up assistant turn ends with `finish reason: [stop]`, because that `stop` marks the assistant's question rather than job completion. While a wait state is pending, the normal job-finished notification is suppressed so you do not receive both alerts for the same handoff. If the agent resumes on its own (normal multi-turn continuation), or if the wrapper success is part of ordinary terminal command execution, the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
 
 It then reads the relevant request line to extract the model name and duration, and POSTs to your ntfy server.
 
