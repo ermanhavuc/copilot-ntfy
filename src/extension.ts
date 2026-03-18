@@ -502,8 +502,7 @@ function pollLog() {
 // ── Job outcome handlers ──────────────────────────────────────
 function handleJobComplete(job: JobInfo) {
   const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
-  const turnsStr = job.turns > 1 ? ` · ${job.turns} turns` : "";
-  const meta = `${job.model}${turnsStr} · ${job.duration}`;
+  const meta = `${job.model} · ${job.duration}`;
   const msgLines = workspace ? [workspace, meta] : [meta];
   sendNtfy("Copilot Job Finished", msgLines.join("\n"), "default", "robot,white_check_mark");
 }
@@ -555,8 +554,8 @@ function handleQuestionWait(job: JobInfo) {
   const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
   const meta = `${job.model} · ${job.duration}`;
   const msgLines = workspace
-    ? [workspace, "Copilot is asking a question and waiting for your reply.", meta]
-    : ["Copilot is asking a question and waiting for your reply.", meta];
+    ? [workspace, "Copilot needs your answer.", meta]
+    : ["Copilot needs your answer.", meta];
   sendNtfy("Copilot Needs Your Reply", msgLines.join("\n"), "high", "robot,question");
 }
 
@@ -564,8 +563,8 @@ function handleTerminalWait(job: JobInfo) {
   const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
   const meta = `${job.model} · ${job.duration}`;
   const msgLines = workspace
-    ? [workspace, "Copilot is waiting for terminal input.", meta]
-    : ["Copilot is waiting for terminal input.", meta];
+    ? [workspace, "Copilot needs terminal input.", meta]
+    : ["Copilot needs terminal input.", meta];
   sendNtfy("Copilot Waiting On Terminal", msgLines.join("\n"), "high", "robot,keyboard");
 }
 
