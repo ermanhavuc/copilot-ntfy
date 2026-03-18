@@ -17,7 +17,7 @@ This VS Code extension watches the Copilot Chat log in the background and sends 
 
 - **Phone notifications via ntfy** — works with any ntfy.sh topic or self-hosted server.
 - **Instant wait-state detection** — notifies within ~5 s of Copilot going idle, not after an arbitrary delay.
-- **Near-zero false positives** — only fires when the log goes fully silent, so normal multi-turn runs never trigger spurious alerts.
+- **Near-zero false positives** — only fires on unresolved handoffs, so normal multi-turn runs and ordinary terminal command execution do not trigger spurious alerts.
 - **Job details included** — model name and elapsed duration in every notification.
 - **Multi-window safe** — deduplicates notifications across multiple VS Code windows.
 - **Status bar indicator** — shows at a glance whether the watcher is active.
@@ -70,9 +70,9 @@ It watches for `ToolCallingLoop` stop events to detect job completion, and track
 | Notification                              | Trigger                                                                                                                                                           |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Copilot is asking you a question**      | An LLM turn finishes with `finish reason: [tool_calls]` inside `editAgent` and the log goes silent — the agent handed back control and is waiting for your reply. |
-| **Copilot is waiting for terminal input** | A `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                           |
+| **Copilot is waiting for terminal input** | A bare `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                      |
 
-Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). If the agent resumes on its own (normal multi-turn continuation), the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
+Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). If the agent resumes on its own (normal multi-turn continuation), or if the wrapper success is part of ordinary terminal command execution, the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
 
 It then reads the relevant request line to extract the model name and duration, and POSTs to your ntfy server.
 
