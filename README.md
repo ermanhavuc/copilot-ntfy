@@ -7,11 +7,11 @@
 
 This VS Code extension watches the Copilot Chat log in the background and sends [ntfy.sh](https://ntfy.sh) notifications for three situations:
 
-| When                              | You get notified             |
-| --------------------------------- | ---------------------------- |
-| ✅ **Job done**                   | Copilot finished the task    |
+| When                              | You get notified                  |
+| --------------------------------- | --------------------------------- |
+| ✅ **Job done**                   | Copilot finished the task         |
 | ❓ **Needs input**                | Copilot is waiting for your input |
-| ⌨️ **Waiting for terminal input** | Copilot needs terminal input |
+| ⌨️ **Waiting for terminal input** | Copilot needs terminal input      |
 
 ## Features
 
@@ -67,10 +67,10 @@ The extension polls the **GitHub Copilot Chat** log file. The log directory is r
 
 It watches for `ToolCallingLoop` stop events to detect job completion, and tracks two additional wait states:
 
-| Notification                              | Trigger                                                                                                                                                               |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Notification                              | Trigger                                                                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Copilot needs input**                   | An unresolved `tool_calls` handoff is followed by an `editAgent` success, and the log then goes silent — Copilot is waiting for your next input, approval, or follow-up. |
-| **Copilot is waiting for terminal input** | A bare `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                          |
+| **Copilot is waiting for terminal input** | A bare `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                             |
 
 Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). An unresolved `tool_calls` wait remains pending even if the follow-up assistant turn ends with `finish reason: [stop]`, because that `stop` may mark a follow-up prompt rather than job completion. While a wait state is pending, the normal job-finished notification is suppressed so you do not receive both alerts for the same handoff. If a terminal-specific wrapper signal appears, it takes precedence over the generic input notification. If the agent resumes on its own (normal multi-turn continuation), or if the wrapper success is part of ordinary terminal command execution, the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
 
