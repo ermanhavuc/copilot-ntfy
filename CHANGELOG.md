@@ -9,7 +9,7 @@
 
 ### Changed
 
-- Delay wait-state notifications so ordinary multi-turn agent runs do not trigger false positives.
+- Wait-state notifications now fire immediately once the log goes silent (one poll tick of inactivity), instead of after a fixed delay. This reduces latency from 30-60 s to ~5 s while keeping false-positive risk near zero.
 
 ## [1.5.2] - 2026-03-17
 

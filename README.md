@@ -3,18 +3,25 @@
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/MrCarrotLabs.copilot-ntfy?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=MrCarrotLabs.copilot-ntfy)
 [![Open VSX](https://img.shields.io/open-vsx/v/MrCarrotLabs/copilot-ntfy?label=Open%20VSX)](https://open-vsx.org/extension/MrCarrotLabs/copilot-ntfy)
 
-A VS Code extension that sends [ntfy.sh](https://ntfy.sh) push notifications when a **GitHub Copilot agent job** finishes or gets stuck waiting on you — so you can walk away and get pinged on your phone when Copilot is done or needs input.
+**Stop babysitting Copilot.** Start a long agent task, walk away, and get a push notification on your phone (and smart watch) the moment it finishes — or the moment it needs you.
+
+This VS Code extension watches the Copilot Chat log in the background and sends [ntfy.sh](https://ntfy.sh) notifications for three situations:
+
+| When                              | You get notified                                                    |
+| --------------------------------- | ------------------------------------------------------------------- |
+| ✅ **Job done**                   | Copilot finished the task                                           |
+| ❓ **Waiting for your reply**     | Copilot asked a question and is blocked on your answer              |
+| ⌨️ **Waiting for terminal input** | Copilot is waiting for a shell command or your terminal interaction |
 
 ## Features
 
-- Automatically detects when a Copilot agent (`editAgent`) job completes by tailing the Copilot Chat log file.
-- Detects when Copilot appears to be waiting for your reply or for terminal input, and notifies only if that wait stays unresolved.
-- Includes turn count and measures job duration (useful for multi-turn Copilot jobs).
-- Avoids duplicate notifications across multiple VS Code windows (dedupes repeated events).
-- Pushes a notification to your ntfy topic with the model name and duration.
-- Status bar indicator shows whether the watcher is active.
-- Configurable poll interval, ntfy server, and topic.
-- Auto-starts on VS Code launch when a topic is already configured.
+- **Phone notifications via ntfy** — works with any ntfy.sh topic or self-hosted server.
+- **Instant wait-state detection** — notifies within ~5 s of Copilot going idle, not after an arbitrary delay.
+- **Near-zero false positives** — only fires when the log goes fully silent, so normal multi-turn runs never trigger spurious alerts.
+- **Job details included** — model name, turn count, and elapsed duration in every notification.
+- **Multi-window safe** — deduplicates notifications across multiple VS Code windows.
+- **Status bar indicator** — shows at a glance whether the watcher is active.
+- **Configurable** — poll interval, ntfy server URL, topic, and auto-start on launch.
 
 ## Requirements
 
@@ -58,7 +65,16 @@ The extension polls the **GitHub Copilot Chat** log file. The log directory is r
 | Windows | `%APPDATA%\Code\logs`                     |
 | Linux   | `~/.config/Code/logs`                     |
 
-It watches for `ToolCallingLoop` stop events to detect job completion, and also tracks unresolved `tool_calls` / `copilotLanguageModelWrapper` sequences to infer when Copilot is likely waiting on a user reply or terminal input. It then reads the relevant request line to extract the model name and duration, and POSTs to your ntfy server.
+It watches for `ToolCallingLoop` stop events to detect job completion, and tracks two additional wait states:
+
+| Notification                              | Trigger                                                                                                                                                                                                  |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Copilot is asking you a question**      | An LLM turn finishes with `finish reason: [tool_calls]` inside `editAgent` and the log goes silent — the agent handed back control and is waiting for your reply.                                        |
+| **Copilot is waiting for terminal input** | A `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — the agent is waiting for a shell command to complete or for you to interact with the terminal. |
+
+Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). If the agent resumes on its own (normal multi-turn continuation), the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
+
+It then reads the relevant request line to extract the model name and duration, and POSTs to your ntfy server.
 
 No Copilot API calls are made; the extension is purely passive and read-only with respect to Copilot itself.
 
