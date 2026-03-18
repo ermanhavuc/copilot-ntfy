@@ -53,7 +53,7 @@ src/
 
 - **Log path is per-window**: `windowExtHostLogDir` is `parent(context.logUri)`. Breaking this derivation silently tails the wrong (or nonexistent) log.
 - **`promptFiltered` ordering**: the content-safety event fires in a _different log context_ before the `editAgent failed` line — tracked with a boolean flag, not by timestamp correlation.
-- **Wait-state detection is heuristic**: `tool_calls` and `copilotLanguageModelWrapper` can appear in normal runs, so unresolved wait notifications must be delayed and cleared as soon as the agent resumes.
+- **Wait-state detection is heuristic**: `tool_calls` and bare `copilotLanguageModelWrapper` successes can appear in normal runs, so unresolved wait notifications must be delayed and cleared as soon as the agent resumes. Wrapper successes paired with an explicit finish reason such as `[stop]` are normal terminal-command flow, not user-input waits.
 - **Tests import from `out/`**: `import { ... } from "../utils"` resolves to `out/utils.js`. Running the test source directly without compiling first will fail.
 - **No redirect following in `sendNtfy`**: if your ntfy server issues a redirect, it is silently dropped.
 - **Cancelled jobs are intentionally ignored**: do not add cancellation handling without also resetting pending state.

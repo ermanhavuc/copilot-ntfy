@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.3] - 2026-03-18
+
+### Fixed
+
+- Stop sending terminal-input wait notifications for normal Copilot terminal command execution when the wrapper success is paired with an explicit finish reason such as `stop`.
+
 ## [1.5.3] - 2026-03-18
 
 ### Added

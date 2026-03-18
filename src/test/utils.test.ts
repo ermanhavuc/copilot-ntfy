@@ -155,6 +155,10 @@ describe("detectWaitStateCandidate", () => {
     assert.equal(detectWaitStateCandidate(TERMINAL_WAIT_LINE, undefined, true), "terminal");
   });
 
+  it("ignores wrapper success after an explicit stop finish reason", () => {
+    assert.equal(detectWaitStateCandidate(TERMINAL_WAIT_LINE, "stop", true), undefined);
+  });
+
   it("ignores wrapper success without an active editAgent turn", () => {
     assert.equal(detectWaitStateCandidate(TERMINAL_WAIT_LINE, undefined, false), undefined);
   });

@@ -76,7 +76,14 @@ export function detectWaitStateCandidate(
     return "question";
   }
 
-  if (hasPendingEditAgentTurn && context === "copilotLanguageModelWrapper") {
+  // A bare wrapper success can indicate a terminal handoff, but wrapper successes that
+  // immediately follow an explicit finish reason like [stop] are common during normal
+  // terminal command execution and should not notify as user input waits.
+  if (
+    hasPendingEditAgentTurn &&
+    !lastFinishReason &&
+    context === "copilotLanguageModelWrapper"
+  ) {
     return "terminal";
   }
 
