@@ -5,12 +5,22 @@ import * as https from "https";
 import * as http from "http";
 import {
   detectWaitStateCandidate,
+  getLoopStopDecision,
+  getWaitStateClearDecision,
   JobInfo,
   formatDuration,
   parseFinishReason,
   parseJobInfo,
 } from "./utils";
-export { detectWaitStateCandidate, JobInfo, formatDuration, parseFinishReason, parseJobInfo } from "./utils";
+export {
+  detectWaitStateCandidate,
+  getLoopStopDecision,
+  getWaitStateClearDecision,
+  JobInfo,
+  formatDuration,
+  parseFinishReason,
+  parseJobInfo,
+} from "./utils";
 
 // ── Globals ───────────────────────────────────────────────────
 let statusBarItem: vscode.StatusBarItem;
@@ -404,8 +414,11 @@ function pollLog() {
     const finishReason = parseFinishReason(line);
     if (finishReason) {
       lastFinishReason = finishReason;
-      if (finishReason !== "tool_calls") {
+      const clearDecision = getWaitStateClearDecision(finishReason, pendingQuestionSinceMs > 0);
+      if (clearDecision.clearQuestion) {
         clearQuestionWaitState();
+      }
+      if (clearDecision.clearTerminal) {
         clearTerminalWaitState();
       }
     }
@@ -480,9 +493,15 @@ function pollLog() {
 
     // ToolCallingLoop stop = entire agent job finished normally
     if (line.includes(RE_LOOP_STOP)) {
-      const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
-      resetPendingState();
-      handleJobComplete(jobInfo);
+      const loopStopDecision = getLoopStopDecision(
+        pendingQuestionSinceMs > 0,
+        pendingTerminalWaitSinceMs > 0
+      );
+      if (loopStopDecision.notifyCompletion) {
+        const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
+        resetPendingState();
+        handleJobComplete(jobInfo);
+      }
     }
 
     // ToolCallingLoop/editAgent runtime error (e.g. unhandled exception in loop)

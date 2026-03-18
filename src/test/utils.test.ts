@@ -10,6 +10,8 @@ import { describe, it } from "node:test";
 import {
   detectWaitStateCandidate,
   formatDuration,
+  getLoopStopDecision,
+  getWaitStateClearDecision,
   parseCcreqContext,
   parseFinishReason,
   parseJobInfo,
@@ -165,5 +167,48 @@ describe("detectWaitStateCandidate", () => {
 
   it("ignores editAgent success when the finish reason was not tool_calls", () => {
     assert.equal(detectWaitStateCandidate(QUESTION_LINE, "stop", true), undefined);
+  });
+});
+
+describe("getWaitStateClearDecision", () => {
+  it("keeps both wait states on tool_calls", () => {
+    assert.deepEqual(getWaitStateClearDecision("tool_calls", false), {
+      clearQuestion: false,
+      clearTerminal: false,
+    });
+  });
+
+  it("keeps a pending question wait across stop", () => {
+    assert.deepEqual(getWaitStateClearDecision("stop", true), {
+      clearQuestion: false,
+      clearTerminal: true,
+    });
+  });
+
+  it("clears both wait states on stop when no question wait is pending", () => {
+    assert.deepEqual(getWaitStateClearDecision("stop", false), {
+      clearQuestion: true,
+      clearTerminal: true,
+    });
+  });
+});
+
+describe("getLoopStopDecision", () => {
+  it("notifies completion when no wait state is pending", () => {
+    assert.deepEqual(getLoopStopDecision(false, false), {
+      notifyCompletion: true,
+    });
+  });
+
+  it("suppresses completion when a question wait is pending", () => {
+    assert.deepEqual(getLoopStopDecision(true, false), {
+      notifyCompletion: false,
+    });
+  });
+
+  it("suppresses completion when a terminal wait is pending", () => {
+    assert.deepEqual(getLoopStopDecision(false, true), {
+      notifyCompletion: false,
+    });
   });
 });

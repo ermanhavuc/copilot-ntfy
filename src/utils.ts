@@ -11,6 +11,15 @@ export interface JobInfo {
   errorCode?: string; // HTTP status ("429", "401") or system code ("ETIMEDOUT")
 }
 
+export interface WaitStateClearDecision {
+  clearQuestion: boolean;
+  clearTerminal: boolean;
+}
+
+export interface LoopStopDecision {
+  notifyCompletion: boolean;
+}
+
 export type WaitStateKind = "question" | "terminal";
 
 // ── Pre-compiled regex ────────────────────────────────────────
@@ -57,6 +66,30 @@ export function parseJobInfo(line: string, turns = 0, jobStartMs = 0): JobInfo {
 export function parseFinishReason(line: string): string | undefined {
   const match = line.match(FINISH_REASON_RE);
   return match?.[1];
+}
+
+export function getWaitStateClearDecision(
+  finishReason: string,
+  hasPendingQuestionWait: boolean
+): WaitStateClearDecision {
+  if (finishReason === "tool_calls") {
+    return { clearQuestion: false, clearTerminal: false };
+  }
+
+  if (finishReason === "stop" && hasPendingQuestionWait) {
+    return { clearQuestion: false, clearTerminal: true };
+  }
+
+  return { clearQuestion: true, clearTerminal: true };
+}
+
+export function getLoopStopDecision(
+  hasPendingQuestionWait: boolean,
+  hasPendingTerminalWait: boolean
+): LoopStopDecision {
+  return {
+    notifyCompletion: !hasPendingQuestionWait && !hasPendingTerminalWait,
+  };
 }
 
 export function parseCcreqContext(line: string): string | undefined {
