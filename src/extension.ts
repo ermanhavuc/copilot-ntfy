@@ -3,8 +3,14 @@ import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
 import * as http from "http";
-import { JobInfo, formatDuration, parseJobInfo } from "./utils";
-export { JobInfo, formatDuration, parseJobInfo } from "./utils";
+import {
+  detectWaitStateCandidate,
+  JobInfo,
+  formatDuration,
+  parseFinishReason,
+  parseJobInfo,
+} from "./utils";
+export { detectWaitStateCandidate, JobInfo, formatDuration, parseFinishReason, parseJobInfo } from "./utils";
 
 // ── Globals ───────────────────────────────────────────────────
 let statusBarItem: vscode.StatusBarItem;
@@ -15,6 +21,13 @@ let pendingCcreqLine = ""; // "ccreq" = Copilot Chat request line — format: "c
 let pendingTurnCount = 0;
 let pendingJobStartMs = 0;
 let pendingPromptFiltered = false; // set when promptFiltered fires before the associated editAgent failed
+let pendingQuestionLine = "";
+let pendingQuestionSinceMs = 0;
+let pendingQuestionNotified = false;
+let pendingTerminalWaitLine = "";
+let pendingTerminalWaitSinceMs = 0;
+let pendingTerminalWaitNotified = false;
+let lastFinishReason: string | undefined;
 let isWatching = false;
 let windowExtHostLogDir = ""; // set from context.logUri — unique per VS Code window
 let extensionContext: vscode.ExtensionContext;
@@ -22,6 +35,8 @@ let extensionContext: vscode.ExtensionContext;
 // ── Shared state (cross-window IPC) ──────────────────────────
 const SHARED_STATE_FILE = "watchState.json";
 const NOTIF_DEDUP_MS = 5000;
+const QUESTION_NOTIFY_DELAY_MS = 60000;
+const TERMINAL_WAIT_NOTIFY_DELAY_MS = 30000;
 
 interface SharedStateData {
   isWatching: boolean;
@@ -191,10 +206,7 @@ function _startPolling() {
   isWatching = true;
   currentLogPath = "";
   lastByteOffset = 0;
-  pendingCcreqLine = "";
-  pendingTurnCount = 0;
-  pendingJobStartMs = 0;
-  pendingPromptFiltered = false;
+  resetPendingState();
   setStatusWatching();
   if (!pollTimer) {
     pollTimer = setInterval(pollLog, getPollInterval());
@@ -262,6 +274,7 @@ function findLatestCopilotLog(): string {
 
 // ── Poll-loop regexes (pre-compiled at module load) ──────────
 const RE_SUCCESS   = /ccreq:.*\| success \|.*\[panel\/editAgent/;
+const RE_WRAPPER_SUCCESS = /ccreq:.*\| success \|.*\[copilotLanguageModelWrapper\]/;
 const RE_FILTERED  = /ccreq:.*\| promptFiltered \|/;
 const RE_FAILED    = /ccreq:.*\| failed \|.*\[panel\/editAgent/;
 const RE_TIMEOUT   = /ccreq:.*\| timeout \|.*\[panel\/editAgent/;
@@ -278,6 +291,62 @@ function resetPendingState() {
   pendingTurnCount = 0;
   pendingJobStartMs = 0;
   pendingPromptFiltered = false;
+  clearPendingWaitStates();
+}
+
+function clearQuestionWaitState() {
+  pendingQuestionLine = "";
+  pendingQuestionSinceMs = 0;
+  pendingQuestionNotified = false;
+}
+
+function clearTerminalWaitState() {
+  pendingTerminalWaitLine = "";
+  pendingTerminalWaitSinceMs = 0;
+  pendingTerminalWaitNotified = false;
+}
+
+function clearPendingWaitStates() {
+  clearQuestionWaitState();
+  clearTerminalWaitState();
+  lastFinishReason = undefined;
+}
+
+function startQuestionWaitState(line: string) {
+  pendingQuestionLine = line;
+  pendingQuestionSinceMs = Date.now();
+  pendingQuestionNotified = false;
+}
+
+function startTerminalWaitState(line: string) {
+  if (pendingTerminalWaitSinceMs > 0) return;
+  pendingTerminalWaitLine = line;
+  pendingTerminalWaitSinceMs = Date.now();
+  pendingTerminalWaitNotified = false;
+}
+
+function flushPendingWaitNotifications() {
+  const now = Date.now();
+
+  if (
+    pendingQuestionSinceMs > 0 &&
+    !pendingQuestionNotified &&
+    now - pendingQuestionSinceMs >= QUESTION_NOTIFY_DELAY_MS
+  ) {
+    const jobInfo = parseJobInfo(pendingQuestionLine || pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
+    handleQuestionWait(jobInfo);
+    pendingQuestionNotified = true;
+  }
+
+  if (
+    pendingTerminalWaitSinceMs > 0 &&
+    !pendingTerminalWaitNotified &&
+    now - pendingTerminalWaitSinceMs >= TERMINAL_WAIT_NOTIFY_DELAY_MS
+  ) {
+    const jobInfo = parseJobInfo(pendingCcreqLine || pendingTerminalWaitLine, pendingTurnCount, pendingJobStartMs);
+    handleTerminalWait(jobInfo);
+    pendingTerminalWaitNotified = true;
+  }
 }
 
 // ── Poll loop ─────────────────────────────────────────────────
@@ -293,7 +362,7 @@ function pollLog() {
     } catch {
       lastByteOffset = 0;
     }
-    pendingCcreqLine = "";
+    resetPendingState();
     return;
   }
 
@@ -304,7 +373,10 @@ function pollLog() {
     return;
   }
 
-  if (currentSize <= lastByteOffset) return;
+  if (currentSize <= lastByteOffset) {
+    flushPendingWaitNotifications();
+    return;
+  }
 
   // Read only new bytes
   let newContent = "";
@@ -327,12 +399,37 @@ function pollLog() {
   // Process line by line
   const lines = newContent.split("\n");
   for (const line of lines) {
+    const finishReason = parseFinishReason(line);
+    if (finishReason) {
+      lastFinishReason = finishReason;
+      if (finishReason !== "tool_calls") {
+        clearQuestionWaitState();
+        clearTerminalWaitState();
+      }
+    }
+
     // Cache the last ccreq success line for editAgent (one LLM turn, may be many per job)
     // Matches both [panel/editAgent] and [panel/editAgent-external] (BYOK)
     if (RE_SUCCESS.test(line)) {
+      const waitCandidate = detectWaitStateCandidate(line, lastFinishReason, pendingTurnCount > 0);
       if (pendingTurnCount === 0) pendingJobStartMs = Date.now();
       pendingCcreqLine = line;
       pendingTurnCount++;
+      if (waitCandidate === "question") {
+        startQuestionWaitState(line);
+      } else {
+        clearQuestionWaitState();
+      }
+      clearTerminalWaitState();
+      lastFinishReason = undefined;
+    }
+
+    if (RE_WRAPPER_SUCCESS.test(line)) {
+      const waitCandidate = detectWaitStateCandidate(line, lastFinishReason, pendingTurnCount > 0);
+      if (waitCandidate === "terminal") {
+        startTerminalWaitState(line);
+      }
+      lastFinishReason = undefined;
     }
 
     // ccreq cancelled/canceled for editAgent — intentionally not handled to avoid false positives.
@@ -396,6 +493,8 @@ function pollLog() {
       handleJobError(jobInfo, reason);
     }
   }
+
+  flushPendingWaitNotifications();
 }
 
 // ── Job outcome handlers ──────────────────────────────────────
@@ -448,6 +547,24 @@ function handleJobError(job: JobInfo, reason?: string) {
   const detail = reason ? `\nReason: ${reason}` : "";
   const message = `Model: ${job.model} (${job.duration})${detail}`;
   sendNtfy("Copilot Job Failed", message, "high", "robot,x");
+}
+
+function handleQuestionWait(job: JobInfo) {
+  const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
+  const meta = `${job.model} · ${job.duration}`;
+  const msgLines = workspace
+    ? [workspace, "Copilot is asking a question and waiting for your reply.", meta]
+    : ["Copilot is asking a question and waiting for your reply.", meta];
+  sendNtfy("Copilot Needs Your Reply", msgLines.join("\n"), "high", "robot,question");
+}
+
+function handleTerminalWait(job: JobInfo) {
+  const workspace = vscode.workspace.workspaceFolders?.[0]?.name ?? "";
+  const meta = `${job.model} · ${job.duration}`;
+  const msgLines = workspace
+    ? [workspace, "Copilot is waiting for terminal input.", meta]
+    : ["Copilot is waiting for terminal input.", meta];
+  sendNtfy("Copilot Waiting On Terminal", msgLines.join("\n"), "high", "robot,keyboard");
 }
 
 // ── Send ntfy notification ────────────────────────────────────
