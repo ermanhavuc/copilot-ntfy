@@ -49,6 +49,7 @@ const SHARED_STATE_FILE = "watchState.json";
 const NOTIF_DEDUP_MS = 5000;
 const QUESTION_NOTIFY_DELAY_MS = 60000;
 const TERMINAL_WAIT_NOTIFY_DELAY_MS = 30000;
+const NON_COMPLETION_NOTIFICATIONS_ENABLED = false;
 
 interface SharedStateData {
   isWatching: boolean;
@@ -531,9 +532,14 @@ function handleJobComplete(job: JobInfo) {
   sendNtfy("Copilot Job Finished", msgLines.join("\n"), "default", "robot,white_check_mark");
 }
 
+function sendNonCompletionNtfy(title: string, body: string, priority = "default", tags = "robot,white_check_mark") {
+  if (!NON_COMPLETION_NOTIFICATIONS_ENABLED) return;
+  sendNtfy(title, body, priority, tags);
+}
+
 function handleJobCancelled(job: JobInfo) {
   const message = `Model: ${job.model} (${job.duration})`;
-  sendNtfy("Copilot Job Cancelled", message, "default", "robot,no_entry_sign");
+  sendNonCompletionNtfy("Copilot Job Cancelled", message, "default", "robot,no_entry_sign");
 }
 
 function handleJobFailure(job: JobInfo) {
@@ -549,29 +555,29 @@ function handleJobFailure(job: JobInfo) {
     detail = `\nError: ${job.errorCode}`;
   }
   const message = `Model: ${job.model} (${job.duration})${detail}`;
-  sendNtfy(title, message, "high", "robot,x");
+  sendNonCompletionNtfy(title, message, "high", "robot,x");
 }
 
 function handleJobFiltered(job: JobInfo) {
   const message = `Model: ${job.model} (${job.duration})\nContent safety or copyright filter triggered.`;
-  sendNtfy("Copilot Request Filtered", message, "default", "robot,warning");
+  sendNonCompletionNtfy("Copilot Request Filtered", message, "default", "robot,warning");
 }
 
 function handleJobTimeout(job: JobInfo) {
   const code = job.errorCode ? ` (${job.errorCode})` : "";
   const message = `Model: ${job.model} (${job.duration})${code}`;
-  sendNtfy("Copilot Job Timed Out", message, "high", "robot,hourglass_flowing_sand");
+  sendNonCompletionNtfy("Copilot Job Timed Out", message, "high", "robot,hourglass_flowing_sand");
 }
 
 function handleJobEmpty(job: JobInfo) {
   const message = `Model: ${job.model} (${job.duration})\nModel returned 0 choices.`;
-  sendNtfy("Copilot Empty Response", message, "default", "robot,question");
+  sendNonCompletionNtfy("Copilot Empty Response", message, "default", "robot,question");
 }
 
 function handleJobError(job: JobInfo, reason?: string) {
   const detail = reason ? `\nReason: ${reason}` : "";
   const message = `Model: ${job.model} (${job.duration})${detail}`;
-  sendNtfy("Copilot Job Failed", message, "high", "robot,x");
+  sendNonCompletionNtfy("Copilot Job Failed", message, "high", "robot,x");
 }
 
 function handleQuestionWait(job: JobInfo) {
@@ -580,7 +586,7 @@ function handleQuestionWait(job: JobInfo) {
   const msgLines = workspace
     ? [workspace, "Copilot is waiting for your input.", meta]
     : ["Copilot is waiting for your input.", meta];
-  sendNtfy("Copilot Needs Input", msgLines.join("\n"), "high", "robot,question");
+  sendNonCompletionNtfy("Copilot Needs Input", msgLines.join("\n"), "high", "robot,question");
 }
 
 function handleTerminalWait(job: JobInfo) {
@@ -589,7 +595,7 @@ function handleTerminalWait(job: JobInfo) {
   const msgLines = workspace
     ? [workspace, "Copilot needs terminal input.", meta]
     : ["Copilot needs terminal input.", meta];
-  sendNtfy("Copilot Waiting On Terminal", msgLines.join("\n"), "high", "robot,keyboard");
+  sendNonCompletionNtfy("Copilot Waiting On Terminal", msgLines.join("\n"), "high", "robot,keyboard");
 }
 
 // ── Send ntfy notification ────────────────────────────────────

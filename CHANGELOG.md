@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.7] - 2026-03-19
+
+### Changed
+
+- Temporarily disable all non-completion notifications so only successful job-finished events are sent while wait-state and failure notification issues are being revisited.
+
 ## [1.6.6] - 2026-03-18
 
 ### Changed
