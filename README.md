@@ -3,21 +3,18 @@
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/MrCarrotLabs.copilot-ntfy?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=MrCarrotLabs.copilot-ntfy)
 [![Open VSX](https://img.shields.io/open-vsx/v/MrCarrotLabs/copilot-ntfy?label=Open%20VSX)](https://open-vsx.org/extension/MrCarrotLabs/copilot-ntfy)
 
-**Stop babysitting Copilot.** Start a long agent task, walk away, and get a push notification on your phone (and smart watch) the moment it finishes — or the moment it needs you.
+**Stop babysitting Copilot.** Start a long agent task, walk away, and get a push notification on your phone (and smart watch) the moment it finishes.
 
-This VS Code extension watches the Copilot Chat log in the background and sends [ntfy.sh](https://ntfy.sh) notifications for three situations:
+This VS Code extension watches the Copilot Chat log in the background and currently sends [ntfy.sh](https://ntfy.sh) notifications only for job completion. Other notification types are temporarily disabled while their heuristics are being reworked.
 
-| When                              | You get notified                  |
-| --------------------------------- | --------------------------------- |
-| ✅ **Job done**                   | Copilot finished the task         |
-| ❓ **Needs input**                | Copilot is waiting for your input |
-| ⌨️ **Waiting for terminal input** | Copilot needs terminal input      |
+| When            | You get notified          |
+| --------------- | ------------------------- |
+| ✅ **Job done** | Copilot finished the task |
 
 ## Features
 
 - **Phone notifications via ntfy** — works with any ntfy.sh topic or self-hosted server.
-- **Instant wait-state detection** — notifies within ~5 s of Copilot going idle, not after an arbitrary delay.
-- **Near-zero false positives** — only fires on unresolved handoffs, so normal multi-turn runs and ordinary terminal command execution do not trigger spurious alerts.
+- **Completion-only notifications for now** — wait-state and failure notifications are temporarily disabled while their behavior is being revised.
 - **Job details included** — model name and elapsed duration in every notification.
 - **Multi-window safe** — deduplicates notifications across multiple VS Code windows.
 - **Status bar indicator** — shows at a glance whether the watcher is active.
@@ -65,14 +62,7 @@ The extension polls the **GitHub Copilot Chat** log file. The log directory is r
 | Windows | `%APPDATA%\Code\logs`                     |
 | Linux   | `~/.config/Code/logs`                     |
 
-It watches for `ToolCallingLoop` stop events to detect job completion, and tracks two additional wait states:
-
-| Notification                              | Trigger                                                                                                                                                                  |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Copilot needs input**                   | An unresolved `tool_calls` handoff is followed by an `editAgent` success, and the log then goes silent — Copilot is waiting for your next input, approval, or follow-up. |
-| **Copilot is waiting for terminal input** | A bare `copilotLanguageModelWrapper` success line is seen while a job is in progress and the log goes silent — Copilot needs terminal input.                             |
-
-Both wait notifications fire as soon as the log goes silent for one poll interval (~5 s). An unresolved `tool_calls` wait remains pending even if the follow-up assistant turn ends with `finish reason: [stop]`, because that `stop` may mark a follow-up prompt rather than job completion. While a wait state is pending, the normal job-finished notification is suppressed so you do not receive both alerts for the same handoff. If a terminal-specific wrapper signal appears, it takes precedence over the generic input notification. If the agent resumes on its own (normal multi-turn continuation), or if the wrapper success is part of ordinary terminal command execution, the wait state is cleared immediately and no notification is sent. This keeps false positives near zero.
+It watches for `ToolCallingLoop` stop events to detect job completion. The extension still tracks additional wait-state signals internally, but those notifications are currently suppressed until the related heuristics are revisited.
 
 It then reads the relevant request line to extract the model name and duration, and POSTs to your ntfy server.
 
