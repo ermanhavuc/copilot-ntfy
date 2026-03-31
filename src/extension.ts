@@ -40,6 +40,7 @@ let pendingTerminalWaitLine = "";
 let pendingTerminalWaitSinceMs = 0;
 let pendingTerminalWaitNotified = false;
 let lastFinishReason: string | undefined;
+let pendingStopHookFired = false;
 let isWatching = false;
 let windowExtHostLogDir = ""; // set from context.logUri — unique per VS Code window
 let extensionContext: vscode.ExtensionContext;
@@ -294,6 +295,7 @@ const RE_TIMEOUT   = /ccreq:.*\| timeout \|.*\[panel\/editAgent/;
 const RE_EMPTY     = /ccreq:.*\| empty \|.*\[panel\/editAgent/;
 const RE_UNKNOWN   = /ccreq:.*\| unknown \|.*\[panel\/editAgent/;
 const RE_LOOP_STOP = "[ToolCallingLoop] Stop hook result: shouldContinue=false";
+const RE_AUTOPILOT_CONTINUE = "Autopilot internal stop hook: continuing";
 const RE_LOOP_ERR  = /\[ToolCallingLoop\] (?:Unhandled |Runtime )?[Ee]rror:/;
 const RE_AGENT_ERR = /\[editAgent\] (?:Unhandled |Runtime )?[Ee]rror:/;
 const RE_ERR_MSG   = /[Ee]rror[:\s]+(.+)/;
@@ -304,6 +306,7 @@ function resetPendingState() {
   pendingTurnCount = 0;
   pendingJobStartMs = 0;
   pendingPromptFiltered = false;
+  pendingStopHookFired = false;
   clearPendingWaitStates();
 }
 
@@ -497,17 +500,21 @@ function pollLog() {
       handleJobError(jobInfo);
     }
 
-    // ToolCallingLoop stop = entire agent job finished normally
+    // ToolCallingLoop stop = agent loop wants to stop.
+    // Deferred: the very next line may be an autopilot override that continues the run.
     if (line.includes(RE_LOOP_STOP)) {
       const loopStopDecision = getLoopStopDecision(
         pendingQuestionSinceMs > 0,
         pendingTerminalWaitSinceMs > 0
       );
-      if (loopStopDecision.notifyCompletion) {
-        const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
-        resetPendingState();
-        handleJobComplete(jobInfo);
+      if (loopStopDecision.notifyCompletion && pendingTurnCount > 0) {
+        pendingStopHookFired = true;
       }
+    }
+
+    // Autopilot override: the stop hook was overridden — agent is NOT done
+    if (line.includes(RE_AUTOPILOT_CONTINUE)) {
+      pendingStopHookFired = false;
     }
 
     // ToolCallingLoop/editAgent runtime error (e.g. unhandled exception in loop)
@@ -519,6 +526,13 @@ function pollLog() {
       resetPendingState();
       handleJobError(jobInfo, reason);
     }
+  }
+
+  // Deferred stop-hook notification: fire only if no autopilot override was seen
+  if (pendingStopHookFired) {
+    const jobInfo = parseJobInfo(pendingCcreqLine, pendingTurnCount, pendingJobStartMs);
+    resetPendingState();
+    handleJobComplete(jobInfo);
   }
 
   flushPendingWaitNotifications(false);  // just processed new content
